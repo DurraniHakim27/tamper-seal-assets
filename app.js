@@ -79,7 +79,10 @@ window.__APP_JS_LOADED = true;
     request: document.getElementById("requestView"),
     process: document.getElementById("processView"),
     initial: document.getElementById("initialView"),
-    unregistered: document.getElementById("unregisteredView")
+    unregistered: document.getElementById("unregisteredView"),
+    initialSuccess: document.getElementById("initialSuccessView"),
+    requestSuccess: document.getElementById("requestSuccessView"),
+    finalizeSuccess: document.getElementById("finalizeSuccessView")
   };
 
   const mainTabs = document.getElementById("mainTabs");
@@ -120,6 +123,11 @@ window.__APP_JS_LOADED = true;
   const unregisteredSubtitle = document.getElementById("unregisteredSubtitle");
   const unregisteredActions = document.getElementById("unregisteredActions");
   const goInitialBtn = document.getElementById("goInitialBtn");
+  const requestRef = document.getElementById("requestRef");
+  const viewSealBtn = document.getElementById("viewSealBtn");
+  const backHomeBtn = document.getElementById("backHomeBtn");
+  const downloadSummaryBtn = document.getElementById("downloadSummaryBtn");
+  const closeFinalizeBtn = document.getElementById("closeFinalizeBtn");
 
   const submitBtn = document.getElementById("submitBtn");
   const clearBtn = document.getElementById("clearBtn");
@@ -128,6 +136,7 @@ window.__APP_JS_LOADED = true;
   const urlParams = new URLSearchParams(window.location.search || "");
   let currentRole = null;
   let notifiedNotRegistered = false;
+  let isUnregistered = false;
 
   function showToast(message) {
     snackbar.labelText = message;
@@ -218,6 +227,11 @@ window.__APP_JS_LOADED = true;
       tabProcess.style.display = "";
       tabInitial.style.display = "";
     }
+  }
+
+  function setTabDisabled(tab, disabled) {
+    if (!tab) return;
+    tab.classList.toggle("tab-disabled", !!disabled);
   }
 
   function renderSealChips(seals) {
@@ -359,7 +373,9 @@ window.__APP_JS_LOADED = true;
       return;
     }
     google.script.run
-      .withSuccessHandler(() => showToast(`Saved seals: ${values.join(", ")}`))
+      .withSuccessHandler(() => {
+        setView("initialSuccess");
+      })
       .withFailureHandler(err => showToast(err.message || err))
       .initialSealSave({
         equipmentId: initEquipment.value,
@@ -381,7 +397,10 @@ window.__APP_JS_LOADED = true;
       return;
     }
     google.script.run
-      .withSuccessHandler(res => showToast(`Request submitted: ${res.requestId}`))
+      .withSuccessHandler(res => {
+        if (requestRef) requestRef.textContent = `Ref ID: ${res.requestId} recorded.`;
+        setView("requestSuccess");
+      })
       .withFailureHandler(err => showToast(err.message || err))
       .submitRequest({
         equipmentId,
@@ -429,7 +448,9 @@ window.__APP_JS_LOADED = true;
     }
 
     google.script.run
-      .withSuccessHandler(() => showToast("Finalized"))
+      .withSuccessHandler(() => {
+        setView("finalizeSuccess");
+      })
       .withFailureHandler(err => showToast(err.message || err))
       .finalizeRequest({
         requestId: PAGE_PARAMS.rid,
@@ -486,6 +507,7 @@ window.__APP_JS_LOADED = true;
         if (unregisteredSubtitle) unregisteredSubtitle.textContent = `Equipment: ${data.equipmentId}`;
 
         if (!isRegistered) {
+          isUnregistered = true;
           renderSealChips([]);
           submitBtn.disabled = true;
           if (!notifiedNotRegistered) {
@@ -499,9 +521,12 @@ window.__APP_JS_LOADED = true;
             if (unregisteredActions) unregisteredActions.style.display = "none";
             setView("unregistered");
           }
+          setTabDisabled(tabRequest, !canInitial);
           return;
         }
 
+        isUnregistered = false;
+        setTabDisabled(tabRequest, false);
         submitBtn.disabled = false;
         renderSealChips(data.currentSeals || []);
       })
@@ -582,6 +607,21 @@ window.__APP_JS_LOADED = true;
           }
           setView("initial");
         });
+      }
+      if (viewSealBtn) {
+        viewSealBtn.addEventListener("click", () => {
+          setView("request");
+          loadEquipment();
+        });
+      }
+      if (backHomeBtn) {
+        backHomeBtn.addEventListener("click", () => setView("request"));
+      }
+      if (downloadSummaryBtn) {
+        downloadSummaryBtn.addEventListener("click", () => showToast("Summary download not configured yet."));
+      }
+      if (closeFinalizeBtn) {
+        closeFinalizeBtn.addEventListener("click", () => setView("process"));
       }
 
       loadEquipment();
