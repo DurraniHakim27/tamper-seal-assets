@@ -222,9 +222,17 @@ window.__APP_JS_LOADED = true;
 
   function renderSealChips(seals) {
     sealChips.innerHTML = "";
+    if (!seals || !seals.length) {
+      const empty = document.createElement("div");
+      empty.className = "supporting";
+      empty.textContent = "No active seals registered yet.";
+      sealChips.appendChild(empty);
+      return;
+    }
     seals.forEach(seal => {
       const chip = document.createElement("md-filter-chip");
       chip.setAttribute("label", seal);
+      chip.setAttribute("selected", "");
       chip.addEventListener("click", () => chip.toggleAttribute("selected"));
       sealChips.appendChild(chip);
     });
