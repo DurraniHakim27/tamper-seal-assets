@@ -311,8 +311,9 @@ window.__APP_JS_LOADED = true;
     });
   }
 
-  function showProcessEmpty(message) {
-    processSubtitle.textContent = message || "Request details unavailable.";
+  function showProcessEmpty(message, rid) {
+    const suffix = rid ? ` (${rid})` : "";
+    processSubtitle.textContent = (message || "Request details unavailable.") + suffix;
     processStatus.innerHTML = "";
     processSummary.innerHTML = "";
     processSeals.innerHTML = "";
@@ -500,13 +501,13 @@ window.__APP_JS_LOADED = true;
   function loadRequest() {
     const rid = getParam("rid");
     if (!rid) {
-      showProcessEmpty("No request ID in URL.");
+      showProcessEmpty("No request ID in URL.", rid);
       return;
     }
     google.script.run
       .withSuccessHandler(req => {
         if (!req || !req.RequestId) {
-          showProcessEmpty("Request details unavailable.");
+          showProcessEmpty("Request details unavailable.", rid);
           return;
         }
         renderProcessSummary(req);
