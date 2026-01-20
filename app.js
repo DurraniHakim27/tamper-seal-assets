@@ -122,7 +122,13 @@ window.__APP_JS_LOADED = true;
   const initialSubtitle = document.getElementById("initialSubtitle");
   const unregisteredSubtitle = document.getElementById("unregisteredSubtitle");
   const unregisteredActions = document.getElementById("unregisteredActions");
-  const goInitialBtn = document.getElementById("goInitialBtn");
+  const registerInitialBtn = document.getElementById("registerInitialBtn");
+  const contactOwnerBtn = document.getElementById("contactOwnerBtn");
+  const refreshUnregBtn = document.getElementById("refreshUnregBtn");
+  const backRequestBtn = document.getElementById("backRequestBtn");
+  const contactModal = document.getElementById("contactModal");
+  const closeContactBtn = document.getElementById("closeContactBtn");
+  const contactMailto = document.getElementById("contactMailto");
   const requestRef = document.getElementById("requestRef");
   const viewSealBtn = document.getElementById("viewSealBtn");
   const backHomeBtn = document.getElementById("backHomeBtn");
@@ -514,13 +520,13 @@ window.__APP_JS_LOADED = true;
             showToast("Not registered");
             notifiedNotRegistered = true;
           }
-          if (canInitial) {
-            if (unregisteredActions) unregisteredActions.style.display = "";
-            setView("initial");
-          } else {
-            if (unregisteredActions) unregisteredActions.style.display = "none";
-            setView("unregistered");
+          if (unregisteredActions) {
+            if (registerInitialBtn) registerInitialBtn.style.display = canInitial ? "" : "none";
+            if (backRequestBtn) backRequestBtn.style.display = canInitial ? "" : "none";
+            if (contactOwnerBtn) contactOwnerBtn.style.display = canInitial ? "none" : "";
+            if (refreshUnregBtn) refreshUnregBtn.style.display = canInitial ? "none" : "";
           }
+          setView("unregistered");
           setTabDisabled(tabRequest, !canInitial);
           return;
         }
@@ -536,7 +542,12 @@ window.__APP_JS_LOADED = true;
         if (message.toLowerCase().includes("equipment id not found")) {
           submitBtn.disabled = true;
           if (unregisteredSubtitle) unregisteredSubtitle.textContent = `Equipment: ${eq}`;
-          if (unregisteredActions) unregisteredActions.style.display = "none";
+          if (unregisteredActions) {
+            if (registerInitialBtn) registerInitialBtn.style.display = "none";
+            if (backRequestBtn) backRequestBtn.style.display = "none";
+            if (contactOwnerBtn) contactOwnerBtn.style.display = "";
+            if (refreshUnregBtn) refreshUnregBtn.style.display = "";
+          }
           setView("unregistered");
         }
       })
@@ -598,8 +609,8 @@ window.__APP_JS_LOADED = true;
       tabRequest.addEventListener("click", () => setView("request"));
       tabProcess.addEventListener("click", () => setView("process"));
       tabInitial.addEventListener("click", () => setView("initial"));
-      if (goInitialBtn) {
-        goInitialBtn.addEventListener("click", () => {
+      if (registerInitialBtn) {
+        registerInitialBtn.addEventListener("click", () => {
           const canInitial = currentRole === "INITIAL_SEAL" || currentRole === "ADMIN";
           if (!canInitial) {
             showToast("Not authorized");
@@ -607,6 +618,29 @@ window.__APP_JS_LOADED = true;
           }
           setView("initial");
         });
+      }
+      if (contactOwnerBtn && contactModal) {
+        contactOwnerBtn.addEventListener("click", () => {
+          const eq = getParam("eq");
+          if (contactMailto) {
+            const subject = encodeURIComponent("Initial Seal registration needed");
+            const body = encodeURIComponent(`Please register initial seal for equipment: ${eq}`);
+            contactMailto.setAttribute("href", `mailto:?subject=${subject}&body=${body}`);
+          }
+          contactModal.classList.remove("hidden");
+        });
+      }
+      if (closeContactBtn && contactModal) {
+        closeContactBtn.addEventListener("click", () => contactModal.classList.add("hidden"));
+      }
+      if (contactMailto && contactModal) {
+        contactMailto.addEventListener("click", () => contactModal.classList.add("hidden"));
+      }
+      if (refreshUnregBtn) {
+        refreshUnregBtn.addEventListener("click", () => loadEquipment());
+      }
+      if (backRequestBtn) {
+        backRequestBtn.addEventListener("click", () => setView("request"));
       }
       if (viewSealBtn) {
         viewSealBtn.addEventListener("click", () => {
