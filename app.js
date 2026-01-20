@@ -122,6 +122,7 @@ window.__APP_JS_LOADED = true;
   const goInitialBtn = document.getElementById("goInitialBtn");
 
   const submitBtn = document.getElementById("submitBtn");
+  const clearBtn = document.getElementById("clearBtn");
   const finalizeBtn = document.getElementById("finalizeBtn");
   const cancelBtn = document.getElementById("cancelBtn");
   const urlParams = new URLSearchParams(window.location.search || "");
@@ -383,6 +384,18 @@ window.__APP_JS_LOADED = true;
         phone: reqPhone.value
       });
   });
+
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      reqReason.value = "";
+      reqName.value = "";
+      reqCompany.value = "";
+      reqPhone.value = "";
+      sealChips.querySelectorAll("md-filter-chip[selected]").forEach(chip => {
+        chip.removeAttribute("selected");
+      });
+    });
+  }
 
   finalizeBtn.addEventListener("click", () => {
     const selected = newSealSeg.querySelector(".segmented-btn[aria-pressed='true']");
