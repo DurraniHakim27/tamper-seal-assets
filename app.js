@@ -80,6 +80,7 @@ window.__APP_JS_LOADED = true;
     process: document.getElementById("processView"),
     initial: document.getElementById("initialView"),
     unregistered: document.getElementById("unregisteredView"),
+    inProgress: document.getElementById("inProgressView"),
     initialSuccess: document.getElementById("initialSuccessView"),
     requestSuccess: document.getElementById("requestSuccessView"),
     finalizeSuccess: document.getElementById("finalizeSuccessView")
@@ -129,6 +130,11 @@ window.__APP_JS_LOADED = true;
   const contactModal = document.getElementById("contactModal");
   const closeContactBtn = document.getElementById("closeContactBtn");
   const contactMailto = document.getElementById("contactMailto");
+  const inProgressSubtitle = document.getElementById("inProgressSubtitle");
+  const inProgressBody = document.getElementById("inProgressBody");
+  const inProgressMeta = document.getElementById("inProgressMeta");
+  const backHomeBtnDup = document.getElementById("backHomeBtnDup");
+  const scanAnotherBtn = document.getElementById("scanAnotherBtn");
   const requestRef = document.getElementById("requestRef");
   const viewSealBtn = document.getElementById("viewSealBtn");
   const backHomeBtn = document.getElementById("backHomeBtn");
@@ -141,6 +147,7 @@ window.__APP_JS_LOADED = true;
   const cancelBtn = document.getElementById("cancelBtn");
   const urlParams = new URLSearchParams(window.location.search || "");
   let currentRole = null;
+  let currentEmail = "";
   let notifiedNotRegistered = false;
   let isUnregistered = false;
 
@@ -512,6 +519,22 @@ window.__APP_JS_LOADED = true;
         initialSubtitle.textContent = `Equipment: ${data.equipmentId}`;
         if (unregisteredSubtitle) unregisteredSubtitle.textContent = `Equipment: ${data.equipmentId}`;
 
+        if (data.pendingRequest && currentRole === "CONTRACTOR") {
+          const requester = data.pendingRequest.name || "Another contractor";
+          const company = data.pendingRequest.company ? ` from ${data.pendingRequest.company}` : "";
+          const createdAt = data.pendingRequest.createdAt ? `Submitted at: ${data.pendingRequest.createdAt}` : "";
+          if (inProgressSubtitle) inProgressSubtitle.textContent = `Equipment: ${data.equipmentId}`;
+          if (inProgressBody) {
+            inProgressBody.textContent = `A request for this seal was already submitted by ${requester}${company}. The CxA and EM have already been notified.`;
+          }
+          if (inProgressMeta) {
+            inProgressMeta.textContent = createdAt || "Scanning a different unit? Just scan its QR code to begin.";
+          }
+          setView("inProgress");
+          setTabDisabled(tabRequest, true);
+          return;
+        }
+
         if (!isRegistered) {
           isUnregistered = true;
           renderSealChips([]);
@@ -566,6 +589,7 @@ window.__APP_JS_LOADED = true;
     }
     google.script.run.withSuccessHandler(ctx => {
       currentRole = ctx.role;
+      currentEmail = ctx.email || "";
       userChip.setAttribute("label", ctx.email);
       setRequesterEmail(ctx.email);
       setTabsForRole(ctx.role);
@@ -641,6 +665,12 @@ window.__APP_JS_LOADED = true;
       }
       if (backRequestBtn) {
         backRequestBtn.addEventListener("click", () => setView("request"));
+      }
+      if (backHomeBtnDup) {
+        backHomeBtnDup.addEventListener("click", () => setView("request"));
+      }
+      if (scanAnotherBtn) {
+        scanAnotherBtn.addEventListener("click", () => showToast("Scan another unit QR to begin."));
       }
       if (viewSealBtn) {
         viewSealBtn.addEventListener("click", () => {
