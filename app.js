@@ -311,6 +311,14 @@ window.__APP_JS_LOADED = true;
     });
   }
 
+  function showProcessEmpty(message) {
+    processSubtitle.textContent = message || "Request details unavailable.";
+    processStatus.innerHTML = "";
+    processSummary.innerHTML = "";
+    processSeals.innerHTML = "";
+    mappingList.innerHTML = "";
+  }
+
   function updateSealAppliedView() {
     const selected = newSealSeg.querySelector(".segmented-btn[aria-pressed='true']");
     const value = selected ? selected.value : "No";
@@ -491,9 +499,18 @@ window.__APP_JS_LOADED = true;
 
   function loadRequest() {
     const rid = getParam("rid");
-    if (!rid) return;
+    if (!rid) {
+      showProcessEmpty("No request ID in URL.");
+      return;
+    }
     google.script.run
-      .withSuccessHandler(req => renderProcessSummary(req))
+      .withSuccessHandler(req => {
+        if (!req || !req.RequestId) {
+          showProcessEmpty("Request details unavailable.");
+          return;
+        }
+        renderProcessSummary(req);
+      })
       .withFailureHandler(showFriendlyError)
       .getRequest(rid);
   }
@@ -631,7 +648,10 @@ window.__APP_JS_LOADED = true;
       }
 
       tabRequest.addEventListener("click", () => setView("request"));
-      tabProcess.addEventListener("click", () => setView("process"));
+      tabProcess.addEventListener("click", () => {
+        setView("process");
+        loadRequest();
+      });
       tabInitial.addEventListener("click", () => setView("initial"));
       if (registerInitialBtn) {
         registerInitialBtn.addEventListener("click", () => {
