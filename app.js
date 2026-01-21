@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260121_1645";
+window.__APP_VERSION__ = "20260121_1705";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -336,7 +336,7 @@ window.__APP_VERSION__ = "20260121_1645";
     processSummary.innerHTML = "";
     processSeals.innerHTML = "";
     mappingList.innerHTML = "";
-    if (processDebug) {
+    if (processDebug && getParam("debugUi") !== "1") {
       processDebug.classList.add("hidden");
     }
   }
