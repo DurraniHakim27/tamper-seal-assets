@@ -530,6 +530,12 @@ window.__APP_VERSION__ = "20260121_1615";
     const debugEnabled = getParam("debug") === "1";
     if (!rid) {
       showProcessEmpty("No request ID in URL.", rid);
+      if (debugEnabled) {
+        renderProcessDebug({
+          pageParams: PAGE_PARAMS,
+          urlSearch: window.location.search
+        });
+      }
       return;
     }
     if (debugEnabled) {
@@ -790,6 +796,14 @@ window.__APP_VERSION__ = "20260121_1615";
       showFriendlyError(err);
       setView("request");
     }).getUserContext();
+
+    if (getParam("debug") === "1") {
+      renderProcessDebug({
+        pageParams: PAGE_PARAMS,
+        urlSearch: window.location.search,
+        appVersion: window.__APP_VERSION__ || ""
+      });
+    }
   }
 
   if (document.readyState === "loading") {
