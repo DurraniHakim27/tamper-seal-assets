@@ -1,10 +1,11 @@
 window.__APP_JS_LOADED = true;
 (function () {
-  const seed = "#AB28A1";
+  const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
+  const themeEnabled = false;
 
   function applyTheme() {
-    if (!mcu) return;
+    if (!mcu || !themeEnabled) return;
     const { argbFromHex, themeFromSourceColor, hexFromArgb } = mcu;
     const theme = themeFromSourceColor(argbFromHex(seed));
     const light = theme.schemes.light;
