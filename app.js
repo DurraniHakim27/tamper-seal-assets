@@ -510,6 +510,10 @@ window.__APP_JS_LOADED = true;
           showProcessEmpty("Request details unavailable.", rid);
           return;
         }
+        if (req._error) {
+          showProcessEmpty(req._error + ` (Sheet: ${req._sheetName})`, rid);
+          return;
+        }
         renderProcessSummary(req);
       })
       .withFailureHandler(err => {
