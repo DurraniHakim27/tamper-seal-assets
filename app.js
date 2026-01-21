@@ -520,6 +520,12 @@ window.__APP_JS_LOADED = true;
         showFriendlyError(err);
         const message = (err && err.message) ? err.message : String(err || "");
         showProcessEmpty(message || "Request details unavailable.", rid);
+        google.script.run.withSuccessHandler(info => {
+          const hint = info && info.recent ? info.recent.join(", ") : "";
+          if (hint) {
+            processSubtitle.textContent = `${processSubtitle.textContent} | Recent IDs: ${hint}`;
+          }
+        }).getRequestDebug(rid);
       })
       .getRequest(rid);
   }
