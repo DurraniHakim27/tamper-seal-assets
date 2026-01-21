@@ -345,6 +345,7 @@ window.__APP_VERSION__ = "20260121_1615";
     if (!processDebug) return;
     processDebug.textContent = JSON.stringify(info, null, 2);
     processDebug.classList.remove("hidden");
+    processDebug.style.display = "block";
   }
 
   function updateSealAppliedView() {
@@ -539,6 +540,13 @@ window.__APP_VERSION__ = "20260121_1615";
       return;
     }
     if (debugEnabled) {
+      renderProcessDebug({
+        debug: "client",
+        pageParams: PAGE_PARAMS,
+        urlSearch: window.location.search,
+        appVersion: window.__APP_VERSION__ || "",
+        rid
+      });
       google.script.run.withSuccessHandler(renderProcessDebug)
         .debugProcessFetch_(rid);
     }
@@ -799,6 +807,7 @@ window.__APP_VERSION__ = "20260121_1615";
 
     if (getParam("debugUi") === "1") {
       renderProcessDebug({
+        debug: "init",
         pageParams: PAGE_PARAMS,
         urlSearch: window.location.search,
         appVersion: window.__APP_VERSION__ || ""
