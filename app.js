@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260121_1755";
+window.__APP_VERSION__ = "20260121_1805";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -545,6 +545,21 @@ window.__APP_VERSION__ = "20260121_1755";
           urlSearch: window.location.search
         });
       }
+      return;
+    }
+    if (debugEnabled) {
+      renderProcessDebug({
+        debug: "client-init",
+        pageParams: PAGE_PARAMS,
+        urlSearch: window.location.search,
+        appVersion: window.__APP_VERSION__ || "",
+        hasGoogle: typeof google !== "undefined",
+        hasScriptRun: !!(google && google.script && google.script.run),
+        rid
+      });
+    }
+    if (!(google && google.script && google.script.run)) {
+      showProcessEmpty("google.script.run unavailable.", rid);
       return;
     }
     if (debugEnabled) {
