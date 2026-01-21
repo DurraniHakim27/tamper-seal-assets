@@ -82,6 +82,8 @@ window.__APP_JS_LOADED = true;
     initial: document.getElementById("initialView"),
     unregistered: document.getElementById("unregisteredView"),
     inProgress: document.getElementById("inProgressView"),
+    unauthorized: document.getElementById("unauthorizedView"),
+    alreadyProcessed: document.getElementById("alreadyProcessedView"),
     initialSuccess: document.getElementById("initialSuccessView"),
     requestSuccess: document.getElementById("requestSuccessView"),
     finalizeSuccess: document.getElementById("finalizeSuccessView")
@@ -136,6 +138,9 @@ window.__APP_JS_LOADED = true;
   const inProgressMeta = document.getElementById("inProgressMeta");
   const backHomeBtnDup = document.getElementById("backHomeBtnDup");
   const scanAnotherBtn = document.getElementById("scanAnotherBtn");
+  const backHomeUnauthorizedBtn = document.getElementById("backHomeUnauthorizedBtn");
+  const backHomeProcessedBtn = document.getElementById("backHomeProcessedBtn");
+  const alreadyProcessedSubtitle = document.getElementById("alreadyProcessedSubtitle");
   const requestRef = document.getElementById("requestRef");
   const viewSealBtn = document.getElementById("viewSealBtn");
   const backHomeBtn = document.getElementById("backHomeBtn");
@@ -241,7 +246,12 @@ window.__APP_JS_LOADED = true;
       tabProcess.style.display = "";
       tabInitial.style.display = "";
     }
-    if (page === "process" && role !== "ADMIN") {
+    if (page === "request") {
+      tabRequest.style.display = "";
+      tabProcess.style.display = "none";
+      tabInitial.style.display = "none";
+    }
+    if (page === "process") {
       tabRequest.style.display = "none";
       tabInitial.style.display = "none";
       tabProcess.style.display = "";
@@ -520,6 +530,14 @@ window.__APP_JS_LOADED = true;
           showProcessEmpty(req._error + ` (Sheet: ${req._sheetName})`, rid);
           return;
         }
+        const status = String(req.Status || "").trim().toUpperCase();
+        if (status && status !== "PENDING") {
+          if (alreadyProcessedSubtitle) {
+            alreadyProcessedSubtitle.textContent = `Request ID: ${req.RequestId}`;
+          }
+          setView("alreadyProcessed");
+          return;
+        }
         renderProcessSummary(req);
       })
       .withFailureHandler(err => {
@@ -558,7 +576,8 @@ window.__APP_JS_LOADED = true;
         initialSubtitle.textContent = `Equipment: ${data.equipmentId}`;
         if (unregisteredSubtitle) unregisteredSubtitle.textContent = `Equipment: ${data.equipmentId}`;
 
-        if (data.pendingRequest && currentRole === "CONTRACTOR") {
+        const page = getParam("page") || "request";
+        if (data.pendingRequest && page === "request") {
           const requester = data.pendingRequest.name || "Another contractor";
           const company = data.pendingRequest.company ? ` from ${data.pendingRequest.company}` : "";
           const createdAt = data.pendingRequest.createdAt ? `Submitted at: ${data.pendingRequest.createdAt}` : "";
@@ -584,9 +603,9 @@ window.__APP_JS_LOADED = true;
           }
           if (unregisteredActions) {
             if (registerInitialBtn) registerInitialBtn.style.display = canInitial ? "" : "none";
-            if (backRequestBtn) backRequestBtn.style.display = canInitial ? "" : "none";
-            if (contactOwnerBtn) contactOwnerBtn.style.display = canInitial ? "none" : "";
-            if (refreshUnregBtn) refreshUnregBtn.style.display = canInitial ? "none" : "";
+            if (backRequestBtn) backRequestBtn.style.display = "none";
+            if (contactOwnerBtn) contactOwnerBtn.style.display = "none";
+            if (refreshUnregBtn) refreshUnregBtn.style.display = "none";
           }
           setView("unregistered");
           setTabDisabled(tabRequest, !canInitial);
@@ -640,6 +659,10 @@ window.__APP_JS_LOADED = true;
       const canInitial = role === "INITIAL_SEAL" || role === "ADMIN";
 
       if (page === "process") {
+        if (role !== "PROCESSOR") {
+          setView("unauthorized");
+          return;
+        }
         if (canProcess) {
           setView("process");
           loadRequest();
@@ -710,6 +733,12 @@ window.__APP_JS_LOADED = true;
       }
       if (backHomeBtnDup) {
         backHomeBtnDup.addEventListener("click", () => setView("request"));
+      }
+      if (backHomeUnauthorizedBtn) {
+        backHomeUnauthorizedBtn.addEventListener("click", () => setView("request"));
+      }
+      if (backHomeProcessedBtn) {
+        backHomeProcessedBtn.addEventListener("click", () => setView("request"));
       }
       if (scanAnotherBtn) {
         scanAnotherBtn.addEventListener("click", () => showToast("Scan another unit QR to begin."));
