@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260121_1705";
+window.__APP_VERSION__ = "20260121_1735";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -345,6 +345,7 @@ window.__APP_VERSION__ = "20260121_1705";
     if (!processDebug) return;
     processDebug.textContent = JSON.stringify(info, null, 2);
     processDebug.classList.remove("hidden");
+    processDebug.style.display = "block";
   }
 
   function updateSealAppliedView() {
@@ -555,15 +556,24 @@ window.__APP_VERSION__ = "20260121_1705";
           renderProcessDebug({
             debug: "getRequestSuccess",
             rid,
+            type: typeof req,
+            keys: req ? Object.keys(req) : [],
             req
           });
         }
-        if (!req || !req.RequestId) {
+        if (!req) {
           showProcessEmpty("Request details unavailable.", rid);
           if (debugEnabled) {
             google.script.run.withSuccessHandler(renderProcessDebug)
               .debugProcessFetch_(rid);
           }
+          return;
+        }
+        if (!req.RequestId) {
+          req.RequestId = req.requestId || req.RequestID || req.requestID || rid || "";
+        }
+        if (!req.RequestId && Object.keys(req).length === 0) {
+          showProcessEmpty("Request details unavailable.", rid);
           return;
         }
         if (req._error) {
