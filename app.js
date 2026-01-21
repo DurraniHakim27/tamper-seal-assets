@@ -341,6 +341,12 @@ window.__APP_VERSION__ = "20260121_1530";
     }
   }
 
+  function renderProcessDebug(info) {
+    if (!processDebug) return;
+    processDebug.textContent = JSON.stringify(info, null, 2);
+    processDebug.classList.remove("hidden");
+  }
+
   function updateSealAppliedView() {
     const selected = newSealSeg.querySelector(".segmented-btn[aria-pressed='true']");
     const value = selected ? selected.value : "No";
@@ -533,6 +539,8 @@ window.__APP_VERSION__ = "20260121_1530";
         }
         if (req._error) {
           showProcessEmpty(req._error + ` (Sheet: ${req._sheetName})`, rid);
+          google.script.run.withSuccessHandler(renderProcessDebug)
+            .debugProcessFetch_(rid);
           return;
         }
         const status = String(req.Status || "").trim().toUpperCase();
@@ -549,11 +557,8 @@ window.__APP_VERSION__ = "20260121_1530";
         showFriendlyError(err);
         const message = (err && err.message) ? err.message : String(err || "");
         showProcessEmpty(message || "Request details unavailable.", rid);
-        google.script.run.withSuccessHandler(info => {
-          if (!processDebug) return;
-          processDebug.textContent = JSON.stringify(info, null, 2);
-          processDebug.classList.remove("hidden");
-        }).debugProcessFetch_(rid);
+        google.script.run.withSuccessHandler(renderProcessDebug)
+          .debugProcessFetch_(rid);
       })
       .getRequest(rid);
   }
