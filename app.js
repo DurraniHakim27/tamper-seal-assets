@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260121_1530";
+window.__APP_VERSION__ = "20260121_1615";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -527,14 +527,23 @@ window.__APP_VERSION__ = "20260121_1530";
 
   function loadRequest() {
     const rid = getParam("rid");
+    const debugEnabled = getParam("debug") === "1";
     if (!rid) {
       showProcessEmpty("No request ID in URL.", rid);
       return;
+    }
+    if (debugEnabled) {
+      google.script.run.withSuccessHandler(renderProcessDebug)
+        .debugProcessFetch_(rid);
     }
     google.script.run
       .withSuccessHandler(req => {
         if (!req || !req.RequestId) {
           showProcessEmpty("Request details unavailable.", rid);
+          if (debugEnabled) {
+            google.script.run.withSuccessHandler(renderProcessDebug)
+              .debugProcessFetch_(rid);
+          }
           return;
         }
         if (req._error) {
@@ -550,6 +559,9 @@ window.__APP_VERSION__ = "20260121_1530";
           }
           setView("alreadyProcessed");
           return;
+        }
+        if (!debugEnabled && processDebug) {
+          processDebug.classList.add("hidden");
         }
         renderProcessSummary(req);
       })
