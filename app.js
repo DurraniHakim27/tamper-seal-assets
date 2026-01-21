@@ -223,7 +223,7 @@ window.__APP_JS_LOADED = true;
     }
   }
 
-  function setTabsForRole(role) {
+  function setTabsForRole(role, page) {
     tabRequest.style.display = "none";
     tabProcess.style.display = "none";
     tabInitial.style.display = "none";
@@ -240,6 +240,11 @@ window.__APP_JS_LOADED = true;
       tabRequest.style.display = "";
       tabProcess.style.display = "";
       tabInitial.style.display = "";
+    }
+    if (page === "process" && role !== "ADMIN") {
+      tabRequest.style.display = "none";
+      tabInitial.style.display = "none";
+      tabProcess.style.display = "";
     }
   }
 
@@ -626,9 +631,9 @@ window.__APP_JS_LOADED = true;
       currentEmail = ctx.email || "";
       userChip.setAttribute("label", ctx.email);
       setRequesterEmail(ctx.email);
-      setTabsForRole(ctx.role);
 
       const page = getParam("page") || "request";
+      setTabsForRole(ctx.role, page);
       const role = ctx.role;
       const canRequest = role === "CONTRACTOR" || role === "PROCESSOR" || role === "ADMIN";
       const canProcess = role === "PROCESSOR" || role === "INITIAL_SEAL" || role === "ADMIN";
