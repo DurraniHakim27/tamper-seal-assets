@@ -527,7 +527,7 @@ window.__APP_VERSION__ = "20260121_1615";
 
   function loadRequest() {
     const rid = getParam("rid");
-    const debugEnabled = getParam("debug") === "1";
+    const debugEnabled = getParam("debugUi") === "1";
     if (!rid) {
       showProcessEmpty("No request ID in URL.", rid);
       if (debugEnabled) {
@@ -797,7 +797,7 @@ window.__APP_VERSION__ = "20260121_1615";
       setView("request");
     }).getUserContext();
 
-    if (getParam("debug") === "1") {
+    if (getParam("debugUi") === "1") {
       renderProcessDebug({
         pageParams: PAGE_PARAMS,
         urlSearch: window.location.search,
