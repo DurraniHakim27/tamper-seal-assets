@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260121_1825";
+window.__APP_VERSION__ = "20260121_1845";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -580,7 +580,7 @@ window.__APP_VERSION__ = "20260121_1825";
             rid,
             error: serializeError(err)
           }))
-          .debugProcessFetch_(rid);
+          .debugProcessFetch(rid);
       } catch (err) {
         renderProcessDebug({
           debug: "debugProcessFetchThrow",
@@ -618,7 +618,7 @@ window.__APP_VERSION__ = "20260121_1825";
           showProcessEmpty("Request details unavailable.", rid);
           if (debugEnabled) {
             google.script.run.withSuccessHandler(renderProcessDebug)
-              .debugProcessFetch_(rid);
+              .debugProcessFetch(rid);
           }
           return;
         }
@@ -632,7 +632,7 @@ window.__APP_VERSION__ = "20260121_1825";
         if (req._error) {
           showProcessEmpty(req._error + ` (Sheet: ${req._sheetName})`, rid);
           google.script.run.withSuccessHandler(renderProcessDebug)
-            .debugProcessFetch_(rid);
+            .debugProcessFetch(rid);
           return;
         }
         const status = String(req.Status || "").trim().toUpperCase();
@@ -662,9 +662,9 @@ window.__APP_VERSION__ = "20260121_1825";
           });
         }
         google.script.run.withSuccessHandler(renderProcessDebug)
-          .debugProcessFetch_(rid);
+          .debugProcessFetch(rid);
       })
-      .getRequest(rid);
+      .getRequestClient(rid);
     } catch (err) {
       responded = true;
       clearTimeout(timeoutId);
