@@ -522,8 +522,9 @@ window.__APP_JS_LOADED = true;
         showProcessEmpty(message || "Request details unavailable.", rid);
         google.script.run.withSuccessHandler(info => {
           const hint = info && info.recent ? info.recent.join(", ") : "";
-          if (hint) {
-            processSubtitle.textContent = `${processSubtitle.textContent} | Recent IDs: ${hint}`;
+          const sheetLine = info ? `Sheet: ${info.spreadsheetName || ""} (${info.sheetId || ""})` : "";
+          if (hint || sheetLine) {
+            processSubtitle.textContent = `${processSubtitle.textContent} | ${sheetLine}${hint ? " | Recent IDs: " + hint : ""}`;
           }
         }).getRequestDebug(rid);
       })
