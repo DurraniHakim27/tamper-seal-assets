@@ -1,4 +1,5 @@
 window.__APP_JS_LOADED = true;
+window.__APP_VERSION__ = "20260121_1530";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -69,7 +70,7 @@ window.__APP_JS_LOADED = true;
   }
 
   window.__APP_JS_LOADED = true;
-  console.log("app.js loaded", { pageParams: window.PAGE_PARAMS || null });
+  console.log("app.js loaded", { pageParams: window.PAGE_PARAMS || null, version: window.__APP_VERSION__ });
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", markAppJsLoaded);
   } else {
@@ -106,6 +107,7 @@ window.__APP_JS_LOADED = true;
   const reqPhone = document.getElementById("reqPhone");
 
   const processSubtitle = document.getElementById("processSubtitle");
+  const processDebug = document.getElementById("processDebug");
   const processStatus = document.getElementById("processStatus");
   const processSummary = document.getElementById("processSummary");
   const processSeals = document.getElementById("processSeals");
@@ -334,6 +336,9 @@ window.__APP_JS_LOADED = true;
     processSummary.innerHTML = "";
     processSeals.innerHTML = "";
     mappingList.innerHTML = "";
+    if (processDebug) {
+      processDebug.classList.add("hidden");
+    }
   }
 
   function updateSealAppliedView() {
@@ -545,12 +550,10 @@ window.__APP_JS_LOADED = true;
         const message = (err && err.message) ? err.message : String(err || "");
         showProcessEmpty(message || "Request details unavailable.", rid);
         google.script.run.withSuccessHandler(info => {
-          const hint = info && info.recent ? info.recent.join(", ") : "";
-          const sheetLine = info ? `Sheet: ${info.spreadsheetName || ""} (${info.sheetId || ""})` : "";
-          if (hint || sheetLine) {
-            processSubtitle.textContent = `${processSubtitle.textContent} | ${sheetLine}${hint ? " | Recent IDs: " + hint : ""}`;
-          }
-        }).getRequestDebug(rid);
+          if (!processDebug) return;
+          processDebug.textContent = JSON.stringify(info, null, 2);
+          processDebug.classList.remove("hidden");
+        }).debugProcessFetch_(rid);
       })
       .getRequest(rid);
   }
@@ -739,6 +742,10 @@ window.__APP_JS_LOADED = true;
       }
       if (backHomeProcessedBtn) {
         backHomeProcessedBtn.addEventListener("click", () => setView("request"));
+      }
+      const versionEl = document.getElementById("appVersion");
+      if (versionEl && window.__APP_VERSION__) {
+        versionEl.textContent = window.__APP_VERSION__;
       }
       if (scanAnotherBtn) {
         scanAnotherBtn.addEventListener("click", () => showToast("Scan another unit QR to begin."));
