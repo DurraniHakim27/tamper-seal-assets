@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260121_1905";
+window.__APP_VERSION__ = "20260121_1925";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
