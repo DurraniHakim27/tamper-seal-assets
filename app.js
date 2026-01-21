@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260121_1805";
+window.__APP_VERSION__ = "20260121_1825";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -343,7 +343,9 @@ window.__APP_VERSION__ = "20260121_1805";
 
   function renderProcessDebug(info) {
     if (!processDebug) return;
-    processDebug.textContent = JSON.stringify(info, null, 2);
+    const next = JSON.stringify(info, null, 2);
+    const existing = processDebug.textContent ? processDebug.textContent.trim() : "";
+    processDebug.textContent = existing ? `${existing}\n\n${next}` : next;
     processDebug.classList.remove("hidden");
     processDebug.style.display = "block";
   }
@@ -570,11 +572,39 @@ window.__APP_VERSION__ = "20260121_1805";
         appVersion: window.__APP_VERSION__ || "",
         rid
       });
-      google.script.run.withSuccessHandler(renderProcessDebug)
-        .debugProcessFetch_(rid);
+      try {
+        google.script.run
+          .withSuccessHandler(renderProcessDebug)
+          .withFailureHandler(err => renderProcessDebug({
+            debug: "debugProcessFetchFailure",
+            rid,
+            error: serializeError(err)
+          }))
+          .debugProcessFetch_(rid);
+      } catch (err) {
+        renderProcessDebug({
+          debug: "debugProcessFetchThrow",
+          rid,
+          error: serializeError(err)
+        });
+      }
     }
-    google.script.run
-      .withSuccessHandler(req => {
+    let responded = false;
+    const timeoutId = setTimeout(() => {
+      if (responded) return;
+      renderProcessDebug({
+        debug: "getRequestTimeout",
+        rid,
+        message: "No response from server within 8s"
+      });
+      showProcessEmpty("Request details unavailable.", rid);
+    }, 8000);
+
+    try {
+      google.script.run
+        .withSuccessHandler(req => {
+          responded = true;
+          clearTimeout(timeoutId);
         if (debugEnabled) {
           renderProcessDebug({
             debug: "getRequestSuccess",
@@ -619,6 +649,8 @@ window.__APP_VERSION__ = "20260121_1805";
         renderProcessSummary(req);
       })
       .withFailureHandler(err => {
+        responded = true;
+        clearTimeout(timeoutId);
         showFriendlyError(err);
         const message = (err && err.message) ? err.message : String(err || "");
         showProcessEmpty(message || "Request details unavailable.", rid);
@@ -633,6 +665,16 @@ window.__APP_VERSION__ = "20260121_1805";
           .debugProcessFetch_(rid);
       })
       .getRequest(rid);
+    } catch (err) {
+      responded = true;
+      clearTimeout(timeoutId);
+      renderProcessDebug({
+        debug: "getRequestThrow",
+        rid,
+        error: serializeError(err)
+      });
+      showProcessEmpty("Request details unavailable.", rid);
+    }
   }
 
   function loadEquipment() {
