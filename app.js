@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260121_1615";
+window.__APP_VERSION__ = "20260121_1645";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -345,7 +345,6 @@ window.__APP_VERSION__ = "20260121_1615";
     if (!processDebug) return;
     processDebug.textContent = JSON.stringify(info, null, 2);
     processDebug.classList.remove("hidden");
-    processDebug.style.display = "block";
   }
 
   function updateSealAppliedView() {
@@ -552,6 +551,13 @@ window.__APP_VERSION__ = "20260121_1615";
     }
     google.script.run
       .withSuccessHandler(req => {
+        if (debugEnabled) {
+          renderProcessDebug({
+            debug: "getRequestSuccess",
+            rid,
+            req
+          });
+        }
         if (!req || !req.RequestId) {
           showProcessEmpty("Request details unavailable.", rid);
           if (debugEnabled) {
@@ -807,7 +813,6 @@ window.__APP_VERSION__ = "20260121_1615";
 
     if (getParam("debugUi") === "1") {
       renderProcessDebug({
-        debug: "init",
         pageParams: PAGE_PARAMS,
         urlSearch: window.location.search,
         appVersion: window.__APP_VERSION__ || ""
