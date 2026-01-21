@@ -512,7 +512,11 @@ window.__APP_JS_LOADED = true;
         }
         renderProcessSummary(req);
       })
-      .withFailureHandler(showFriendlyError)
+      .withFailureHandler(err => {
+        showFriendlyError(err);
+        const message = (err && err.message) ? err.message : String(err || "");
+        showProcessEmpty(message || "Request details unavailable.", rid);
+      })
       .getRequest(rid);
   }
 
