@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260121_1845";
+window.__APP_VERSION__ = "20260121_1905";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -600,80 +600,98 @@ window.__APP_VERSION__ = "20260121_1845";
       showProcessEmpty("Request details unavailable.", rid);
     }, 8000);
 
-    try {
-      google.script.run
-        .withSuccessHandler(req => {
-          responded = true;
-          clearTimeout(timeoutId);
-        if (debugEnabled) {
-          renderProcessDebug({
-            debug: "getRequestSuccess",
-            rid,
-            type: typeof req,
-            keys: req ? Object.keys(req) : [],
-            req
-          });
-        }
-        if (!req) {
-          showProcessEmpty("Request details unavailable.", rid);
-          if (debugEnabled) {
-            google.script.run.withSuccessHandler(renderProcessDebug)
-              .debugProcessFetch(rid);
-          }
-          return;
-        }
-        if (!req.RequestId) {
-          req.RequestId = req.requestId || req.RequestID || req.requestID || rid || "";
-        }
-        if (!req.RequestId && Object.keys(req).length === 0) {
-          showProcessEmpty("Request details unavailable.", rid);
-          return;
-        }
-        if (req._error) {
-          showProcessEmpty(req._error + ` (Sheet: ${req._sheetName})`, rid);
-          google.script.run.withSuccessHandler(renderProcessDebug)
-            .debugProcessFetch(rid);
-          return;
-        }
-        const status = String(req.Status || "").trim().toUpperCase();
-        if (status && status !== "PENDING") {
-          if (alreadyProcessedSubtitle) {
-            alreadyProcessedSubtitle.textContent = `Request ID: ${req.RequestId}`;
-          }
-          setView("alreadyProcessed");
-          return;
-        }
-        if (!debugEnabled && processDebug) {
-          processDebug.classList.add("hidden");
-        }
-        renderProcessSummary(req);
-      })
-      .withFailureHandler(err => {
-        responded = true;
-        clearTimeout(timeoutId);
-        showFriendlyError(err);
-        const message = (err && err.message) ? err.message : String(err || "");
-        showProcessEmpty(message || "Request details unavailable.", rid);
-        if (debugEnabled) {
-          renderProcessDebug({
-            debug: "getRequestFailure",
-            rid,
-            error: serializeError(err)
-          });
-        }
-        google.script.run.withSuccessHandler(renderProcessDebug)
-          .debugProcessFetch(rid);
-      })
-      .getRequestClient(rid);
-    } catch (err) {
+    const handleRequestSuccess = req => {
       responded = true;
       clearTimeout(timeoutId);
+      if (debugEnabled) {
+        renderProcessDebug({
+          debug: "getRequestSuccess",
+          rid,
+          type: typeof req,
+          keys: req ? Object.keys(req) : [],
+          req
+        });
+      }
+      if (!req) {
+        showProcessEmpty("Request details unavailable.", rid);
+        if (debugEnabled) {
+          google.script.run.withSuccessHandler(renderProcessDebug)
+            .debugProcessFetch(rid);
+        }
+        return;
+      }
+      if (!req.RequestId) {
+        req.RequestId = req.requestId || req.RequestID || req.requestID || rid || "";
+      }
+      if (!req.RequestId && Object.keys(req).length === 0) {
+        showProcessEmpty("Request details unavailable.", rid);
+        return;
+      }
+      if (req._error) {
+        showProcessEmpty(req._error + ` (Sheet: ${req._sheetName})`, rid);
+        google.script.run.withSuccessHandler(renderProcessDebug)
+          .debugProcessFetch(rid);
+        return;
+      }
+      const status = String(req.Status || "").trim().toUpperCase();
+      if (status && status !== "PENDING") {
+        if (alreadyProcessedSubtitle) {
+          alreadyProcessedSubtitle.textContent = `Request ID: ${req.RequestId}`;
+        }
+        setView("alreadyProcessed");
+        return;
+      }
+      if (!debugEnabled && processDebug) {
+        processDebug.classList.add("hidden");
+      }
+      renderProcessSummary(req);
+    };
+
+    const handleRequestFailure = err => {
+      responded = true;
+      clearTimeout(timeoutId);
+      showFriendlyError(err);
+      const message = (err && err.message) ? err.message : String(err || "");
+      showProcessEmpty(message || "Request details unavailable.", rid);
+      if (debugEnabled) {
+        renderProcessDebug({
+          debug: "getRequestFailure",
+          rid,
+          error: serializeError(err)
+        });
+      }
+      google.script.run.withSuccessHandler(renderProcessDebug)
+        .debugProcessFetch(rid);
+    };
+
+    const callRequest = methodName => {
+      google.script.run
+        .withSuccessHandler(handleRequestSuccess)
+        .withFailureHandler(handleRequestFailure)
+        [methodName](rid);
+    };
+
+    try {
+      callRequest("getRequestClient");
+    } catch (err) {
       renderProcessDebug({
         debug: "getRequestThrow",
         rid,
-        error: serializeError(err)
+        error: serializeError(err),
+        fallback: "getRequest"
       });
-      showProcessEmpty("Request details unavailable.", rid);
+      try {
+        callRequest("getRequest");
+      } catch (err2) {
+        responded = true;
+        clearTimeout(timeoutId);
+        renderProcessDebug({
+          debug: "getRequestThrowFallback",
+          rid,
+          error: serializeError(err2)
+        });
+        showProcessEmpty("Request details unavailable.", rid);
+      }
     }
   }
 
