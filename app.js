@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260414_no_flash";
+window.__APP_VERSION__ = "20260414_never_stuck";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -557,35 +557,31 @@ window.__APP_VERSION__ = "20260414_no_flash";
 
     let responded = false;
     const bootSub = document.getElementById("bootLoadingSubtitle");
-    const timeoutId = setTimeout(() => {
-      if (responded) return;
-      console.log("[loadEquipment] TIMEOUT after 15s");
-      if (bootSub) bootSub.textContent = "Server is taking too long. Please refresh the page.";
-    }, 15000);
 
-    google.script.run
-      .withSuccessHandler(data => {
+    function handleEquipmentData(data) {
+      try {
         responded = true;
-        clearTimeout(timeoutId);
-        console.log("[loadEquipment] success", JSON.stringify(data ? { pendingRequest: !!data.pendingRequest, isRegistered: data.isRegistered, hasInitialSeal: data.hasInitialSeal } : null));
+        console.log("[loadEquipment] success", data ? JSON.stringify({ pending: !!data.pendingRequest, reg: data.isRegistered, seal: data.hasInitialSeal }) : "null");
+        if (!data) { setView("request"); if (requestSubtitle) requestSubtitle.textContent = "No data returned. Please refresh."; return; }
+
         const role = currentRole || "CONTRACTOR";
         const canInitial = role === "INITIAL_SEAL" || role === "ADMIN";
         const isRegistered = (typeof data.isRegistered === "boolean") ? data.isRegistered : !!data.hasInitialSeal;
 
         lockEquipmentField(data.equipmentId);
         setInitEquipmentField(data.equipmentId);
-        const dateText = data.dateL2 ? " \u2022 L2: " + data.dateL2 : "";
+        var dateText = data.dateL2 ? " \u2022 L2: " + data.dateL2 : "";
         if (requestSubtitle) requestSubtitle.textContent = "Equipment: " + data.equipmentId + dateText;
         if (initialSubtitle) initialSubtitle.textContent = "Equipment: " + data.equipmentId;
         if (unregisteredSubtitle) unregisteredSubtitle.textContent = "Equipment: " + data.equipmentId;
 
-        const page = getParam("page") || "request";
+        var page = getParam("page") || "request";
 
-        // Pending request detected by server
         if (data.pendingRequest && page !== "process") {
-          console.log("[loadEquipment] server says PENDING");
+          console.log("[loadEquipment] PENDING detected");
           savePendingLocally(data.equipmentId, data.pendingRequest.requestId || "");
-          const createdAt = data.pendingRequest.createdAt ? "Submitted at: " + data.pendingRequest.createdAt : "";
+          var createdAt = "";
+          try { createdAt = data.pendingRequest.createdAt ? "Submitted at: " + data.pendingRequest.createdAt : ""; } catch (e) { /* ignore */ }
           showInProgress(data.equipmentId, "Oops, someone had requested earlier. Better luck and be earlier next time pal.", createdAt);
           return;
         }
@@ -605,18 +601,23 @@ window.__APP_VERSION__ = "20260414_no_flash";
           return;
         }
 
-        // Registered — show request form
         isUnregistered = false;
         submitBtn.disabled = false;
         renderSealChips(data.currentSeals || []);
         setTabsForRole(currentRole || "CONTRACTOR", page, { equipmentUnregistered: false });
         setView("request");
-      })
-      .withFailureHandler(err => {
+      } catch (jsErr) {
+        console.error("[loadEquipment] JS ERROR in success handler:", jsErr);
+        setView("request");
+        if (requestSubtitle) requestSubtitle.textContent = "Error: " + (jsErr.message || jsErr);
+      }
+    }
+
+    function handleEquipmentError(err) {
+      try {
         responded = true;
-        clearTimeout(timeoutId);
-        console.log("[loadEquipment] FAILURE", err && err.message);
-        const message = (err && err.message) ? err.message : String(err || "");
+        console.log("[loadEquipment] SERVER ERROR", err && err.message);
+        var message = (err && err.message) ? err.message : String(err || "Unknown error");
         if (message.toLowerCase().includes("equipment id not found")) {
           submitBtn.disabled = true;
           if (unregisteredSubtitle) unregisteredSubtitle.textContent = "Equipment: " + eq;
@@ -631,12 +632,39 @@ window.__APP_VERSION__ = "20260414_no_flash";
           setView("unregistered");
         } else {
           setView("request");
-          if (requestSubtitle) requestSubtitle.textContent = "Error loading equipment: " + message;
+          if (requestSubtitle) requestSubtitle.textContent = "Error: " + message;
           submitBtn.disabled = true;
           showFriendlyError(err);
         }
-      })
-      .getEquipmentData(eq);
+      } catch (jsErr) {
+        console.error("[loadEquipment] JS ERROR in failure handler:", jsErr);
+        setView("request");
+        if (requestSubtitle) requestSubtitle.textContent = "Error: " + (jsErr.message || jsErr);
+      }
+    }
+
+    // Timeout: after 12s force-show something so page never stays stuck on Loading
+    var timeoutId = setTimeout(function () {
+      if (responded) return;
+      console.log("[loadEquipment] TIMEOUT 12s — forcing visible state");
+      responded = true;
+      setView("request");
+      if (requestSubtitle) requestSubtitle.textContent = "Server is taking too long. Please refresh.";
+      submitBtn.disabled = true;
+    }, 12000);
+
+    try {
+      google.script.run
+        .withSuccessHandler(function (data) { clearTimeout(timeoutId); handleEquipmentData(data); })
+        .withFailureHandler(function (err) { clearTimeout(timeoutId); handleEquipmentError(err); })
+        .getEquipmentData(eq);
+    } catch (callErr) {
+      clearTimeout(timeoutId);
+      responded = true;
+      console.error("[loadEquipment] call threw:", callErr);
+      setView("request");
+      if (requestSubtitle) requestSubtitle.textContent = "Error calling server: " + (callErr.message || callErr);
+    }
   }
 
   // ==================== INIT ====================
