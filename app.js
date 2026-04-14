@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260414_boot_tabs";
+window.__APP_VERSION__ = "20260414_tabs_gate";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -96,6 +96,17 @@ window.__APP_VERSION__ = "20260414_boot_tabs";
   const tabProcess = document.getElementById("tabProcess");
   const tabInitial = document.getElementById("tabInitial");
   const userChip = document.getElementById("userChip");
+
+  function prepareShellBeforeAuth() {
+    if (viewMap.request) viewMap.request.classList.add("hidden");
+    if (viewMap.bootLoading) viewMap.bootLoading.classList.remove("hidden");
+    if (mainTabs) mainTabs.style.visibility = "hidden";
+  }
+  prepareShellBeforeAuth();
+
+  function revealMainTabs() {
+    if (mainTabs) mainTabs.style.visibility = "";
+  }
   const snackbar = document.getElementById("snackbar");
 
   const sealChips = document.getElementById("sealChips");
@@ -260,7 +271,10 @@ window.__APP_VERSION__ = "20260414_boot_tabs";
     }
     if (role === "INITIAL_SEAL") {
       tabInitial.style.display = "";
-      tabProcess.style.display = "";
+      const sealOnlyNav = equipmentUnregistered && eqInUrl;
+      if (!sealOnlyNav) {
+        tabProcess.style.display = "";
+      }
     }
     if (role === "ADMIN") {
       if (!hideRequestTab) tabRequest.style.display = "";
@@ -775,11 +789,13 @@ window.__APP_VERSION__ = "20260414_boot_tabs";
           }
           setView("unregistered");
           setTabDisabled(tabRequest, !canInitial);
+          setTabDisabled(tabInitial, !!canInitial);
           return;
         }
 
         isUnregistered = false;
         setTabDisabled(tabRequest, false);
+        setTabDisabled(tabInitial, false);
         submitBtn.disabled = false;
         renderSealChips(data.currentSeals || []);
         const p = getParam("page") || "request";
@@ -815,6 +831,8 @@ window.__APP_VERSION__ = "20260414_boot_tabs";
             mainTabs.activeTabIndex = 2;
           }
           setView("unregistered");
+          const canInitialFail = (currentRole === "INITIAL_SEAL" || currentRole === "ADMIN");
+          setTabDisabled(tabInitial, !!canInitialFail);
         } else {
           pendingEquipmentRoute = false;
           setTabsForRole(currentRole || "CONTRACTOR", getParam("page") || "request", { equipmentUnregistered: false });
@@ -845,6 +863,12 @@ window.__APP_VERSION__ = "20260414_boot_tabs";
       pendingEquipmentRoute = false;
       setTabsForRole(ctx.role, page, { equipmentUnregistered: !!deferEquipmentBoot });
       const role = ctx.role;
+      if (deferEquipmentBoot && (role === "INITIAL_SEAL" || role === "ADMIN")) {
+        setTabDisabled(tabInitial, true);
+      } else {
+        setTabDisabled(tabInitial, false);
+      }
+      revealMainTabs();
       const canRequest = role === "CONTRACTOR" || role === "PROCESSOR" || role === "ADMIN";
       const canProcess = role === "PROCESSOR" || role === "INITIAL_SEAL" || role === "ADMIN";
       const canInitial = role === "INITIAL_SEAL" || role === "ADMIN";
@@ -892,10 +916,14 @@ window.__APP_VERSION__ = "20260414_boot_tabs";
 
       tabRequest.addEventListener("click", () => setView("request"));
       tabProcess.addEventListener("click", () => {
+        if (tabProcess.classList.contains("tab-disabled")) return;
         setView("process");
         loadRequest();
       });
-      tabInitial.addEventListener("click", () => setView("initial"));
+      tabInitial.addEventListener("click", () => {
+        if (tabInitial.classList.contains("tab-disabled")) return;
+        setView("initial");
+      });
       if (registerInitialBtn) {
         registerInitialBtn.addEventListener("click", () => {
           const canInitial = currentRole === "INITIAL_SEAL" || currentRole === "ADMIN";
@@ -904,6 +932,7 @@ window.__APP_VERSION__ = "20260414_boot_tabs";
             return;
           }
           setView("initial");
+          setTabDisabled(tabInitial, false);
         });
       }
       if (contactOwnerBtn && contactModal) {
@@ -966,6 +995,7 @@ window.__APP_VERSION__ = "20260414_boot_tabs";
       if (sealList.children.length === 0) addSealRow("");
     }).withFailureHandler(err => {
       showFriendlyError(err);
+      revealMainTabs();
       setView("request");
     }).getUserContext();
 
