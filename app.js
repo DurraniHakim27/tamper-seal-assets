@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260414_nav_lock";
+window.__APP_VERSION__ = "20260414_pending_msg_lock";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -172,6 +172,24 @@ window.__APP_VERSION__ = "20260414_nav_lock";
   let isUnregistered = false;
   /** When true, first equipment load should pick request vs initial after CONFIG response. */
   let pendingEquipmentRoute = false;
+
+  function hideLegacyActionButtons() {
+    [
+      "backHomeBtnDup",
+      "backHomeUnauthorizedBtn",
+      "backHomeProcessedBtn",
+      "backHomeBtn",
+      "downloadSummaryBtn",
+      "closeFinalizeBtn"
+    ].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.setAttribute("hidden", "hidden");
+      el.style.display = "none";
+      if ("disabled" in el) el.disabled = true;
+    });
+  }
+  hideLegacyActionButtons();
 
   function showToast(message) {
     snackbar.labelText = message;
@@ -755,7 +773,7 @@ window.__APP_VERSION__ = "20260414_nav_lock";
           const createdAt = data.pendingRequest.createdAt ? `Submitted at: ${data.pendingRequest.createdAt}` : "";
           if (inProgressSubtitle) inProgressSubtitle.textContent = `Equipment: ${data.equipmentId}`;
           if (inProgressBody) {
-            inProgressBody.textContent = `A request for this seal was already submitted by ${requester}${company}. The CxA and EM have already been notified.`;
+            inProgressBody.textContent = "Oops, someone had requested earlier. Better luck and be earlier next time pal.";
           }
           if (inProgressMeta) {
             inProgressMeta.textContent = createdAt || "Scanning a different unit? Just scan its QR code to begin.";
@@ -939,13 +957,13 @@ window.__APP_VERSION__ = "20260414_nav_lock";
         backRequestBtn.addEventListener("click", () => setView("request"));
       }
       if (backHomeBtnDup) {
-        backHomeBtnDup.addEventListener("click", () => setView("request"));
+        backHomeBtnDup.addEventListener("click", () => {});
       }
       if (backHomeUnauthorizedBtn) {
-        backHomeUnauthorizedBtn.addEventListener("click", () => setView("request"));
+        backHomeUnauthorizedBtn.addEventListener("click", () => {});
       }
       if (backHomeProcessedBtn) {
-        backHomeProcessedBtn.addEventListener("click", () => setView("request"));
+        backHomeProcessedBtn.addEventListener("click", () => {});
       }
       const versionEl = document.getElementById("appVersion");
       if (versionEl && window.__APP_VERSION__) {
@@ -961,13 +979,13 @@ window.__APP_VERSION__ = "20260414_nav_lock";
         });
       }
       if (backHomeBtn) {
-        backHomeBtn.addEventListener("click", () => setView("request"));
+        backHomeBtn.addEventListener("click", () => {});
       }
       if (downloadSummaryBtn) {
-        downloadSummaryBtn.addEventListener("click", () => showToast("Summary download not configured yet."));
+        downloadSummaryBtn.addEventListener("click", () => {});
       }
       if (closeFinalizeBtn) {
-        closeFinalizeBtn.addEventListener("click", () => setView("process"));
+        closeFinalizeBtn.addEventListener("click", () => {});
       }
 
       loadEquipment();
