@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260414_pending_msg_lock";
+window.__APP_VERSION__ = "20260414_boot_fallback_submit";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -98,8 +98,13 @@ window.__APP_VERSION__ = "20260414_pending_msg_lock";
   const userChip = document.getElementById("userChip");
 
   function prepareShellBeforeAuth() {
-    if (viewMap.request) viewMap.request.classList.add("hidden");
-    if (viewMap.bootLoading) viewMap.bootLoading.classList.remove("hidden");
+    if (viewMap.bootLoading) {
+      if (viewMap.request) viewMap.request.classList.add("hidden");
+      viewMap.bootLoading.classList.remove("hidden");
+    } else if (viewMap.request) {
+      // Backward-compatible fallback if deployed HTML is older.
+      viewMap.request.classList.remove("hidden");
+    }
     if (mainTabs) mainTabs.style.visibility = "hidden";
   }
   prepareShellBeforeAuth();
@@ -192,8 +197,17 @@ window.__APP_VERSION__ = "20260414_pending_msg_lock";
   hideLegacyActionButtons();
 
   function showToast(message) {
-    snackbar.labelText = message;
-    snackbar.open = true;
+    const text = String(message || "");
+    if (snackbar && "open" in snackbar) {
+      snackbar.labelText = text;
+      snackbar.open = true;
+      return;
+    }
+    try {
+      window.alert(text);
+    } catch (e) {
+      console.log(text);
+    }
   }
 
   function showFriendlyError(err) {
@@ -504,12 +518,22 @@ window.__APP_VERSION__ = "20260414_pending_msg_lock";
       showToast("Fill all required fields");
       return;
     }
+    submitBtn.disabled = true;
     google.script.run
       .withSuccessHandler(res => {
+        submitBtn.disabled = false;
         if (requestRef) requestRef.textContent = `Ref ID: ${res.requestId} recorded.`;
         setView("requestSuccess");
       })
-      .withFailureHandler(err => showToast(err.message || err))
+      .withFailureHandler(err => {
+        submitBtn.disabled = false;
+        const message = err && err.message ? err.message : String(err || "Submit failed");
+        if (String(message).toLowerCase().includes("not authorized")) {
+          showToast("Submit failed: this account is not authorized on server deployment yet.");
+          return;
+        }
+        showToast("Submit failed: " + message);
+      })
       .submitRequest({
         equipmentId,
         selectedSeals,
