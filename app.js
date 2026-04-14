@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260414_json_string";
+window.__APP_VERSION__ = "20260414_no_popups";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -183,10 +183,8 @@ window.__APP_VERSION__ = "20260414_json_string";
     const text = String(message || "");
     console.log("[toast]", text);
     try {
-      if (snackbar && typeof snackbar.show === "function") { snackbar.labelText = text; snackbar.open = true; return; }
-      if (snackbar && "open" in snackbar) { snackbar.labelText = text; snackbar.open = true; return; }
-    } catch (e) { /* fallback */ }
-    try { window.alert(text); } catch (e) { /* ignore */ }
+      if (snackbar && "open" in snackbar) { snackbar.labelText = text; snackbar.open = true; }
+    } catch (e) { /* ignore */ }
   }
 
   function showFriendlyError(err) {
@@ -564,7 +562,7 @@ window.__APP_VERSION__ = "20260414_json_string";
 
         if (!isRegistered) {
           submitBtn.disabled = true;
-          if (!notifiedNotRegistered) { showToast("Not registered"); notifiedNotRegistered = true; }
+          notifiedNotRegistered = true;
           if (unregisteredActions) {
             if (registerInitialBtn) registerInitialBtn.style.display = canInitial ? "" : "none";
             if (backRequestBtn) backRequestBtn.style.display = "none";
@@ -610,7 +608,6 @@ window.__APP_VERSION__ = "20260414_json_string";
           setView("request");
           if (requestSubtitle) requestSubtitle.textContent = "Error: " + message;
           submitBtn.disabled = true;
-          showFriendlyError(err);
         }
       } catch (jsErr) {
         console.error("[loadEquipment] JS ERROR in failure handler:", jsErr);
@@ -678,7 +675,7 @@ window.__APP_VERSION__ = "20260414_json_string";
       if (requestSubtitle) requestSubtitle.textContent = "Equipment: " + eqPrefill;
       if (initialSubtitle) initialSubtitle.textContent = "Equipment: " + eqPrefill;
     } else {
-      showToast("No equipment ID in URL (eq=...)");
+      console.log("No equipment ID in URL (eq=...)");
     }
 
     google.script.run.withSuccessHandler(ctx => {
@@ -714,7 +711,7 @@ window.__APP_VERSION__ = "20260414_json_string";
 
       if (registerInitialBtn) {
         registerInitialBtn.addEventListener("click", () => {
-          if (currentRole !== "INITIAL_SEAL" && currentRole !== "ADMIN") { showToast("Not authorized"); return; }
+          if (currentRole !== "INITIAL_SEAL" && currentRole !== "ADMIN") { return; }
           setView("initial");
         });
       }
@@ -730,7 +727,7 @@ window.__APP_VERSION__ = "20260414_json_string";
       if (closeContactBtn && contactModal) closeContactBtn.addEventListener("click", () => contactModal.classList.add("hidden"));
       if (contactMailto && contactModal) contactMailto.addEventListener("click", () => contactModal.classList.add("hidden"));
       if (refreshUnregBtn) refreshUnregBtn.addEventListener("click", () => loadEquipment());
-      if (scanAnotherBtn) scanAnotherBtn.addEventListener("click", () => showToast("Scan another unit QR to begin."));
+      if (scanAnotherBtn) scanAnotherBtn.addEventListener("click", () => {});
       if (viewSealBtn) viewSealBtn.addEventListener("click", () => { setView("request"); loadEquipment(); });
 
       const versionEl = document.getElementById("appVersion");
@@ -741,7 +738,6 @@ window.__APP_VERSION__ = "20260414_json_string";
       if (sealList.children.length === 0) addSealRow("");
     }).withFailureHandler(err => {
       console.log("[init] getUserContext FAILED", err && err.message);
-      showFriendlyError(err);
       revealMainTabs();
       var bootSub = document.getElementById("bootLoadingSubtitle");
       if (bootSub) bootSub.textContent = "Failed to load. Please refresh the page.";
