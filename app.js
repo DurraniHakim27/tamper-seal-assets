@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260414_never_stuck";
+window.__APP_VERSION__ = "20260414_client_wrap";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -561,8 +561,9 @@ window.__APP_VERSION__ = "20260414_never_stuck";
     function handleEquipmentData(data) {
       try {
         responded = true;
-        console.log("[loadEquipment] success", data ? JSON.stringify({ pending: !!data.pendingRequest, reg: data.isRegistered, seal: data.hasInitialSeal }) : "null");
+        console.log("[loadEquipment] raw response:", JSON.stringify(data));
         if (!data) { setView("request"); if (requestSubtitle) requestSubtitle.textContent = "No data returned. Please refresh."; return; }
+        if (data._error) { setView("request"); if (requestSubtitle) requestSubtitle.textContent = "Server error: " + data._error; submitBtn.disabled = true; return; }
 
         const role = currentRole || "CONTRACTOR";
         const canInitial = role === "INITIAL_SEAL" || role === "ADMIN";
@@ -657,7 +658,7 @@ window.__APP_VERSION__ = "20260414_never_stuck";
       google.script.run
         .withSuccessHandler(function (data) { clearTimeout(timeoutId); handleEquipmentData(data); })
         .withFailureHandler(function (err) { clearTimeout(timeoutId); handleEquipmentError(err); })
-        .getEquipmentData(eq);
+        .getEquipmentDataClient(eq);
     } catch (callErr) {
       clearTimeout(timeoutId);
       responded = true;
