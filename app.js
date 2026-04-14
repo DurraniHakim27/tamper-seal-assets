@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260121_1925";
+window.__APP_VERSION__ = "20260414_boot_tabs";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -78,6 +78,7 @@ window.__APP_VERSION__ = "20260121_1925";
   }
 
   const viewMap = {
+    bootLoading: document.getElementById("bootLoadingView"),
     request: document.getElementById("requestView"),
     process: document.getElementById("processView"),
     initial: document.getElementById("initialView"),
@@ -158,6 +159,8 @@ window.__APP_VERSION__ = "20260121_1925";
   let currentEmail = "";
   let notifiedNotRegistered = false;
   let isUnregistered = false;
+  /** When true, first equipment load should pick request vs initial after CONFIG response. */
+  let pendingEquipmentRoute = false;
 
   function showToast(message) {
     snackbar.labelText = message;
@@ -178,12 +181,22 @@ window.__APP_VERSION__ = "20260121_1925";
   }
 
   function setView(view) {
-    Object.values(viewMap).forEach(v => v.classList.add("hidden"));
+    Object.values(viewMap).forEach(v => {
+      if (v) v.classList.add("hidden");
+    });
     if (viewMap[view]) viewMap[view].classList.remove("hidden");
     if (mainTabs) {
       if (view === "request") mainTabs.activeTabIndex = 0;
       if (view === "process") mainTabs.activeTabIndex = 1;
       if (view === "initial") mainTabs.activeTabIndex = 2;
+      if (view === "bootLoading") {
+        const role = currentRole || "";
+        mainTabs.activeTabIndex = role === "INITIAL_SEAL" || role === "ADMIN" ? 2 : 0;
+      }
+      if (view === "unregistered") {
+        const role = currentRole || "";
+        if (role === "INITIAL_SEAL" || role === "ADMIN") mainTabs.activeTabIndex = 2;
+      }
     }
   }
 
@@ -230,13 +243,19 @@ window.__APP_VERSION__ = "20260121_1925";
     }
   }
 
-  function setTabsForRole(role, page) {
+  function setTabsForRole(role, page, opts) {
+    const options = opts || {};
+    const equipmentUnregistered = !!options.equipmentUnregistered;
+    const eqInUrl = !!getParam("eq");
+    const hideRequestTab =
+      role === "INITIAL_SEAL" ||
+      (equipmentUnregistered && eqInUrl);
     tabRequest.style.display = "none";
     tabProcess.style.display = "none";
     tabInitial.style.display = "none";
-    if (role === "CONTRACTOR") tabRequest.style.display = "";
+    if (role === "CONTRACTOR" && !hideRequestTab) tabRequest.style.display = "";
     if (role === "PROCESSOR") {
-      tabRequest.style.display = "";
+      if (!hideRequestTab) tabRequest.style.display = "";
       tabProcess.style.display = "";
     }
     if (role === "INITIAL_SEAL") {
@@ -244,11 +263,11 @@ window.__APP_VERSION__ = "20260121_1925";
       tabProcess.style.display = "";
     }
     if (role === "ADMIN") {
-      tabRequest.style.display = "";
+      if (!hideRequestTab) tabRequest.style.display = "";
       tabProcess.style.display = "";
       tabInitial.style.display = "";
     }
-    if (page === "request") {
+    if (page === "request" && !hideRequestTab) {
       tabRequest.style.display = "";
       tabProcess.style.display = "none";
       tabInitial.style.display = "none";
@@ -718,6 +737,8 @@ window.__APP_VERSION__ = "20260121_1925";
 
         const page = getParam("page") || "request";
         if (data.pendingRequest && page === "request") {
+          pendingEquipmentRoute = false;
+          setTabsForRole(currentRole || "CONTRACTOR", page, { equipmentUnregistered: false });
           const requester = data.pendingRequest.name || "Another contractor";
           const company = data.pendingRequest.company ? ` from ${data.pendingRequest.company}` : "";
           const createdAt = data.pendingRequest.createdAt ? `Submitted at: ${data.pendingRequest.createdAt}` : "";
@@ -734,6 +755,7 @@ window.__APP_VERSION__ = "20260121_1925";
         }
 
         if (!isRegistered) {
+          pendingEquipmentRoute = false;
           isUnregistered = true;
           renderSealChips([]);
           submitBtn.disabled = true;
@@ -747,6 +769,10 @@ window.__APP_VERSION__ = "20260121_1925";
             if (contactOwnerBtn) contactOwnerBtn.style.display = "none";
             if (refreshUnregBtn) refreshUnregBtn.style.display = "none";
           }
+          setTabsForRole(currentRole || "CONTRACTOR", page, { equipmentUnregistered: true });
+          if (mainTabs && (currentRole === "INITIAL_SEAL" || currentRole === "ADMIN")) {
+            mainTabs.activeTabIndex = 2;
+          }
           setView("unregistered");
           setTabDisabled(tabRequest, !canInitial);
           return;
@@ -756,11 +782,26 @@ window.__APP_VERSION__ = "20260121_1925";
         setTabDisabled(tabRequest, false);
         submitBtn.disabled = false;
         renderSealChips(data.currentSeals || []);
+        const p = getParam("page") || "request";
+        setTabsForRole(currentRole || "CONTRACTOR", p, { equipmentUnregistered: false });
+        const bootActive = viewMap.bootLoading && !viewMap.bootLoading.classList.contains("hidden");
+        const unregActive = viewMap.unregistered && !viewMap.unregistered.classList.contains("hidden");
+        if (pendingEquipmentRoute || bootActive || unregActive) {
+          pendingEquipmentRoute = false;
+          if (p === "initial") {
+            setView("initial");
+          } else if (p === "request" || !getParam("page")) {
+            const r = currentRole || "CONTRACTOR";
+            if (r === "INITIAL_SEAL" || r === "ADMIN") setView("initial");
+            else setView("request");
+          }
+        }
       })
       .withFailureHandler(err => {
         const message = (err && err.message) ? err.message : String(err || "");
         showFriendlyError(err);
         if (message.toLowerCase().includes("equipment id not found")) {
+          pendingEquipmentRoute = false;
           submitBtn.disabled = true;
           if (unregisteredSubtitle) unregisteredSubtitle.textContent = `Equipment: ${eq}`;
           if (unregisteredActions) {
@@ -769,7 +810,15 @@ window.__APP_VERSION__ = "20260121_1925";
             if (contactOwnerBtn) contactOwnerBtn.style.display = "";
             if (refreshUnregBtn) refreshUnregBtn.style.display = "";
           }
+          setTabsForRole(currentRole || "CONTRACTOR", getParam("page") || "request", { equipmentUnregistered: true });
+          if (mainTabs && (currentRole === "INITIAL_SEAL" || currentRole === "ADMIN")) {
+            mainTabs.activeTabIndex = 2;
+          }
           setView("unregistered");
+        } else {
+          pendingEquipmentRoute = false;
+          setTabsForRole(currentRole || "CONTRACTOR", getParam("page") || "request", { equipmentUnregistered: false });
+          setView("request");
         }
       })
       .getEquipmentData(eq);
@@ -792,7 +841,9 @@ window.__APP_VERSION__ = "20260121_1925";
       setRequesterEmail(ctx.email);
 
       const page = getParam("page") || "request";
-      setTabsForRole(ctx.role, page);
+      const deferEquipmentBoot = !!eqPrefill && page !== "process";
+      pendingEquipmentRoute = false;
+      setTabsForRole(ctx.role, page, { equipmentUnregistered: !!deferEquipmentBoot });
       const role = ctx.role;
       const canRequest = role === "CONTRACTOR" || role === "PROCESSOR" || role === "ADMIN";
       const canProcess = role === "PROCESSOR" || role === "INITIAL_SEAL" || role === "ADMIN";
@@ -812,16 +863,23 @@ window.__APP_VERSION__ = "20260121_1925";
         }
       } else if (page === "initial") {
         if (canInitial) {
-          setView("initial");
+          if (deferEquipmentBoot) {
+            setView("bootLoading");
+            pendingEquipmentRoute = true;
+          } else {
+            setView("initial");
+          }
         } else {
           showToast("Not authorized");
           setView(canRequest ? "request" : "process");
         }
       } else {
-        if (role === "INITIAL_SEAL") {
+        if (deferEquipmentBoot) {
+          setView("bootLoading");
+          pendingEquipmentRoute = true;
+        } else if (role === "INITIAL_SEAL") {
           setView("initial");
-        } else
-        if (canRequest) {
+        } else if (canRequest) {
           setView("request");
         } else if (canInitial) {
           showToast("Not authorized");
