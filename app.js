@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260414_blank_fix";
+window.__APP_VERSION__ = "20260414_no_boot_route";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -221,6 +221,13 @@ window.__APP_VERSION__ = "20260414_blank_fix";
 
   function getParam(key) {
     return (PAGE_PARAMS && PAGE_PARAMS[key]) ? PAGE_PARAMS[key] : (urlParams.get(key) || "");
+  }
+
+  function setRequestLoadingState(isLoading, message) {
+    if (submitBtn) submitBtn.disabled = !!isLoading;
+    if (isLoading && requestSubtitle) {
+      requestSubtitle.textContent = message || "Checking equipment status...";
+    }
   }
 
   function setView(view) {
@@ -777,6 +784,7 @@ window.__APP_VERSION__ = "20260414_blank_fix";
   function loadEquipment() {
     const eq = getParam("eq");
     if (!eq) return;
+    setRequestLoadingState(true, "Checking equipment status...");
     lockEquipmentField(eq);
     setInitEquipmentField(eq);
     if (unregisteredSubtitle) unregisteredSubtitle.textContent = `Equipment: ${eq}`;
@@ -797,6 +805,7 @@ window.__APP_VERSION__ = "20260414_blank_fix";
 
         const page = getParam("page") || "request";
         if (data.pendingRequest && page === "request") {
+          setRequestLoadingState(false);
           pendingEquipmentRoute = false;
           setTabsForRole(currentRole || "CONTRACTOR", page, { equipmentUnregistered: false });
           const requester = data.pendingRequest.name || "Another contractor";
@@ -814,6 +823,7 @@ window.__APP_VERSION__ = "20260414_blank_fix";
         }
 
         if (!isRegistered) {
+          setRequestLoadingState(false);
           pendingEquipmentRoute = false;
           isUnregistered = true;
           renderSealChips([]);
@@ -837,6 +847,7 @@ window.__APP_VERSION__ = "20260414_blank_fix";
         }
 
         isUnregistered = false;
+        setRequestLoadingState(false);
         submitBtn.disabled = false;
         renderSealChips(data.currentSeals || []);
         const p = getParam("page") || "request";
@@ -856,6 +867,7 @@ window.__APP_VERSION__ = "20260414_blank_fix";
         }
       })
       .withFailureHandler(err => {
+        setRequestLoadingState(false);
         const message = (err && err.message) ? err.message : String(err || "");
         showFriendlyError(err);
         if (message.toLowerCase().includes("equipment id not found")) {
@@ -923,7 +935,8 @@ window.__APP_VERSION__ = "20260414_blank_fix";
       } else if (page === "initial") {
         if (canInitial) {
           if (deferEquipmentBoot) {
-            setView("bootLoading");
+            setRequestLoadingState(true, "Checking equipment status...");
+            setView("request");
             pendingEquipmentRoute = true;
           } else {
             setView("initial");
@@ -934,7 +947,8 @@ window.__APP_VERSION__ = "20260414_blank_fix";
         }
       } else {
         if (deferEquipmentBoot) {
-          setView("bootLoading");
+          setRequestLoadingState(true, "Checking equipment status...");
+          setView("request");
           pendingEquipmentRoute = true;
         } else if (canRequest) {
           setView("request");
