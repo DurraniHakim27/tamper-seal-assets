@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260414_robust";
+window.__APP_VERSION__ = "20260414_no_flash";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -554,14 +554,13 @@ window.__APP_VERSION__ = "20260414_robust";
     lockEquipmentField(eq);
     setInitEquipmentField(eq);
     if (unregisteredSubtitle) unregisteredSubtitle.textContent = "Equipment: " + eq;
-    if (requestSubtitle) requestSubtitle.textContent = "Checking equipment status...";
-    if (submitBtn) submitBtn.disabled = true;
 
     let responded = false;
+    const bootSub = document.getElementById("bootLoadingSubtitle");
     const timeoutId = setTimeout(() => {
       if (responded) return;
       console.log("[loadEquipment] TIMEOUT after 15s");
-      if (requestSubtitle) requestSubtitle.textContent = "Server is taking too long. Please refresh the page.";
+      if (bootSub) bootSub.textContent = "Server is taking too long. Please refresh the page.";
     }, 15000);
 
     google.script.run
@@ -631,6 +630,7 @@ window.__APP_VERSION__ = "20260414_robust";
           if (mainTabs && (currentRole === "INITIAL_SEAL" || currentRole === "ADMIN")) mainTabs.activeTabIndex = 2;
           setView("unregistered");
         } else {
+          setView("request");
           if (requestSubtitle) requestSubtitle.textContent = "Error loading equipment: " + message;
           submitBtn.disabled = true;
           showFriendlyError(err);
@@ -674,11 +674,8 @@ window.__APP_VERSION__ = "20260414_robust";
         return;
       }
 
-      // For request/initial pages, show request view immediately (with loading subtitle),
-      // then loadEquipment will switch to correct view.
-      setView("request");
-      if (eqPrefill && requestSubtitle) requestSubtitle.textContent = "Checking equipment status...";
-      if (submitBtn) submitBtn.disabled = true;
+      // Keep bootLoading visible until loadEquipment finishes.
+      // Do NOT show request form yet — it would flash before we know the real state.
 
       // Wire up tab clicks (all no-op for safety)
       tabRequest.addEventListener("click", () => {});
@@ -713,10 +710,11 @@ window.__APP_VERSION__ = "20260414_robust";
       updateSealAppliedView();
       if (sealList.children.length === 0) addSealRow("");
     }).withFailureHandler(err => {
+      console.log("[init] getUserContext FAILED", err && err.message);
       showFriendlyError(err);
       revealMainTabs();
-      setView("request");
-      if (requestSubtitle) requestSubtitle.textContent = "Failed to load user context. Please refresh.";
+      var bootSub = document.getElementById("bootLoadingSubtitle");
+      if (bootSub) bootSub.textContent = "Failed to load. Please refresh the page.";
     }).getUserContext();
   }
 
