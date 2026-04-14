@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260414_boot_fallback_submit";
+window.__APP_VERSION__ = "20260414_blank_fix";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -227,16 +227,23 @@ window.__APP_VERSION__ = "20260414_boot_fallback_submit";
     Object.values(viewMap).forEach(v => {
       if (v) v.classList.add("hidden");
     });
-    if (viewMap[view]) viewMap[view].classList.remove("hidden");
+    const fallbackView = viewMap.request || viewMap.unregistered || viewMap.initial || null;
+    const targetView = viewMap[view] || fallbackView;
+    if (targetView) targetView.classList.remove("hidden");
+    const effectiveView = viewMap[view] ? view : (
+      targetView === viewMap.request ? "request" :
+      targetView === viewMap.unregistered ? "unregistered" :
+      targetView === viewMap.initial ? "initial" : view
+    );
     if (mainTabs) {
-      if (view === "request") mainTabs.activeTabIndex = 0;
-      if (view === "process") mainTabs.activeTabIndex = 1;
-      if (view === "initial") mainTabs.activeTabIndex = 2;
-      if (view === "bootLoading") {
+      if (effectiveView === "request") mainTabs.activeTabIndex = 0;
+      if (effectiveView === "process") mainTabs.activeTabIndex = 1;
+      if (effectiveView === "initial") mainTabs.activeTabIndex = 2;
+      if (effectiveView === "bootLoading") {
         const role = currentRole || "";
         mainTabs.activeTabIndex = role === "INITIAL_SEAL" || role === "ADMIN" ? 2 : 0;
       }
-      if (view === "unregistered") {
+      if (effectiveView === "unregistered") {
         const role = currentRole || "";
         if (role === "INITIAL_SEAL" || role === "ADMIN") mainTabs.activeTabIndex = 2;
       }
