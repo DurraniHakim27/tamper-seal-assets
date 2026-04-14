@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260414_client_wrap";
+window.__APP_VERSION__ = "20260414_fallback";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -49,33 +49,8 @@ window.__APP_VERSION__ = "20260414_client_wrap";
 
   applyTheme();
 
-  function markAppJsLoaded() {
-    if (document.getElementById("appJsLoadedBanner")) return;
-    const banner = document.createElement("div");
-    banner.id = "appJsLoadedBanner";
-    banner.textContent = "app.js loaded";
-    banner.style.cssText = [
-      "position:fixed",
-      "bottom:8px",
-      "right:8px",
-      "background:#1b5e20",
-      "color:#fff",
-      "padding:4px 8px",
-      "border-radius:6px",
-      "font-size:12px",
-      "z-index:9999",
-      "opacity:0.85"
-    ].join(";");
-    document.body.appendChild(banner);
-  }
-
   window.__APP_JS_LOADED = true;
   console.log("app.js loaded", { pageParams: window.PAGE_PARAMS || null, version: window.__APP_VERSION__ });
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", markAppJsLoaded);
-  } else {
-    markAppJsLoaded();
-  }
 
   // ==================== PENDING REQUEST MEMORY ====================
   // Client-side safety net: remember recently submitted requests so refresh
@@ -654,17 +629,30 @@ window.__APP_VERSION__ = "20260414_client_wrap";
       submitBtn.disabled = true;
     }, 12000);
 
+    var runner = google.script.run
+      .withSuccessHandler(function (data) { clearTimeout(timeoutId); handleEquipmentData(data); })
+      .withFailureHandler(function (err) { clearTimeout(timeoutId); handleEquipmentError(err); });
+
     try {
-      google.script.run
-        .withSuccessHandler(function (data) { clearTimeout(timeoutId); handleEquipmentData(data); })
-        .withFailureHandler(function (err) { clearTimeout(timeoutId); handleEquipmentError(err); })
-        .getEquipmentDataClient(eq);
+      if (typeof runner.getEquipmentDataClient === "function") {
+        runner.getEquipmentDataClient(eq);
+      } else {
+        runner.getEquipmentData(eq);
+      }
     } catch (callErr) {
-      clearTimeout(timeoutId);
-      responded = true;
-      console.error("[loadEquipment] call threw:", callErr);
-      setView("request");
-      if (requestSubtitle) requestSubtitle.textContent = "Error calling server: " + (callErr.message || callErr);
+      console.log("[loadEquipment] first call failed, trying fallback", callErr);
+      try {
+        google.script.run
+          .withSuccessHandler(function (data) { clearTimeout(timeoutId); handleEquipmentData(data); })
+          .withFailureHandler(function (err) { clearTimeout(timeoutId); handleEquipmentError(err); })
+          .getEquipmentData(eq);
+      } catch (callErr2) {
+        clearTimeout(timeoutId);
+        responded = true;
+        console.error("[loadEquipment] both calls failed:", callErr2);
+        setView("request");
+        if (requestSubtitle) requestSubtitle.textContent = "Error calling server. Please refresh.";
+      }
     }
   }
 
