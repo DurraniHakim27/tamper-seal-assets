@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260414_fallback";
+window.__APP_VERSION__ = "20260414_json_string";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -629,27 +629,40 @@ window.__APP_VERSION__ = "20260414_fallback";
       submitBtn.disabled = true;
     }, 12000);
 
-    var runner = google.script.run
-      .withSuccessHandler(function (data) { clearTimeout(timeoutId); handleEquipmentData(data); })
-      .withFailureHandler(function (err) { clearTimeout(timeoutId); handleEquipmentError(err); });
+    function handleJsonString(jsonStr) {
+      clearTimeout(timeoutId);
+      console.log("[loadEquipment] JSON string response length:", jsonStr ? jsonStr.length : 0);
+      try {
+        var parsed = JSON.parse(jsonStr);
+        handleEquipmentData(parsed);
+      } catch (parseErr) {
+        console.error("[loadEquipment] JSON parse failed:", parseErr, "raw:", jsonStr);
+        handleEquipmentData(null);
+      }
+    }
 
     try {
-      if (typeof runner.getEquipmentDataClient === "function") {
-        runner.getEquipmentDataClient(eq);
-      } else {
-        runner.getEquipmentData(eq);
-      }
+      google.script.run
+        .withSuccessHandler(handleJsonString)
+        .withFailureHandler(function (err) {
+          console.log("[loadEquipment] getEquipmentDataJson failed, trying getEquipmentData", err && err.message);
+          try {
+            google.script.run
+              .withSuccessHandler(function (data) { clearTimeout(timeoutId); handleEquipmentData(data); })
+              .withFailureHandler(function (err2) { clearTimeout(timeoutId); handleEquipmentError(err2); })
+              .getEquipmentData(eq);
+          } catch (e) { clearTimeout(timeoutId); handleEquipmentError(err); }
+        })
+        .getEquipmentDataJson(eq);
     } catch (callErr) {
-      console.log("[loadEquipment] first call failed, trying fallback", callErr);
+      console.log("[loadEquipment] getEquipmentDataJson not available, using getEquipmentData");
       try {
         google.script.run
           .withSuccessHandler(function (data) { clearTimeout(timeoutId); handleEquipmentData(data); })
           .withFailureHandler(function (err) { clearTimeout(timeoutId); handleEquipmentError(err); })
           .getEquipmentData(eq);
       } catch (callErr2) {
-        clearTimeout(timeoutId);
-        responded = true;
-        console.error("[loadEquipment] both calls failed:", callErr2);
+        clearTimeout(timeoutId); responded = true;
         setView("request");
         if (requestSubtitle) requestSubtitle.textContent = "Error calling server. Please refresh.";
       }
