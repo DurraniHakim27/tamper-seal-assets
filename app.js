@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260414_tabs_gate";
+window.__APP_VERSION__ = "20260414_nav_lock";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -258,39 +258,36 @@ window.__APP_VERSION__ = "20260414_tabs_gate";
     const options = opts || {};
     const equipmentUnregistered = !!options.equipmentUnregistered;
     const eqInUrl = !!getParam("eq");
-    const hideRequestTab =
+    const lockToInitialFlow = equipmentUnregistered && eqInUrl;
+    const showRequestTab = !lockToInitialFlow && (
+      role === "CONTRACTOR" ||
+      role === "PROCESSOR" ||
       role === "INITIAL_SEAL" ||
-      (equipmentUnregistered && eqInUrl);
+      role === "ADMIN"
+    );
+    const showProcessTab = !lockToInitialFlow && (
+      role === "PROCESSOR" ||
+      role === "ADMIN"
+    );
+    const showInitialTab = role === "INITIAL_SEAL" || role === "ADMIN";
+
     tabRequest.style.display = "none";
     tabProcess.style.display = "none";
     tabInitial.style.display = "none";
-    if (role === "CONTRACTOR" && !hideRequestTab) tabRequest.style.display = "";
-    if (role === "PROCESSOR") {
-      if (!hideRequestTab) tabRequest.style.display = "";
-      tabProcess.style.display = "";
-    }
-    if (role === "INITIAL_SEAL") {
-      tabInitial.style.display = "";
-      const sealOnlyNav = equipmentUnregistered && eqInUrl;
-      if (!sealOnlyNav) {
-        tabProcess.style.display = "";
-      }
-    }
-    if (role === "ADMIN") {
-      if (!hideRequestTab) tabRequest.style.display = "";
-      tabProcess.style.display = "";
-      tabInitial.style.display = "";
-    }
-    if (page === "request" && !hideRequestTab) {
-      tabRequest.style.display = "";
-      tabProcess.style.display = "none";
-      tabInitial.style.display = "none";
-    }
-    if (page === "process") {
+    if (showRequestTab) tabRequest.style.display = "";
+    if (showProcessTab) tabProcess.style.display = "";
+    if (showInitialTab) tabInitial.style.display = "";
+
+    if (page === "process" && showProcessTab) {
       tabRequest.style.display = "none";
       tabInitial.style.display = "none";
       tabProcess.style.display = "";
     }
+
+    // Navigation tabs stay informational only to avoid workflow loopholes.
+    setTabDisabled(tabRequest, true);
+    setTabDisabled(tabProcess, true);
+    setTabDisabled(tabInitial, true);
   }
 
   function setTabDisabled(tab, disabled) {
@@ -764,7 +761,6 @@ window.__APP_VERSION__ = "20260414_tabs_gate";
             inProgressMeta.textContent = createdAt || "Scanning a different unit? Just scan its QR code to begin.";
           }
           setView("inProgress");
-          setTabDisabled(tabRequest, true);
           return;
         }
 
@@ -788,14 +784,10 @@ window.__APP_VERSION__ = "20260414_tabs_gate";
             mainTabs.activeTabIndex = 2;
           }
           setView("unregistered");
-          setTabDisabled(tabRequest, !canInitial);
-          setTabDisabled(tabInitial, !!canInitial);
           return;
         }
 
         isUnregistered = false;
-        setTabDisabled(tabRequest, false);
-        setTabDisabled(tabInitial, false);
         submitBtn.disabled = false;
         renderSealChips(data.currentSeals || []);
         const p = getParam("page") || "request";
@@ -808,8 +800,9 @@ window.__APP_VERSION__ = "20260414_tabs_gate";
             setView("initial");
           } else if (p === "request" || !getParam("page")) {
             const r = currentRole || "CONTRACTOR";
-            if (r === "INITIAL_SEAL" || r === "ADMIN") setView("initial");
-            else setView("request");
+            const canRequestRole = r === "CONTRACTOR" || r === "PROCESSOR" || r === "INITIAL_SEAL" || r === "ADMIN";
+            if (canRequestRole) setView("request");
+            else setView("initial");
           }
         }
       })
@@ -831,8 +824,6 @@ window.__APP_VERSION__ = "20260414_tabs_gate";
             mainTabs.activeTabIndex = 2;
           }
           setView("unregistered");
-          const canInitialFail = (currentRole === "INITIAL_SEAL" || currentRole === "ADMIN");
-          setTabDisabled(tabInitial, !!canInitialFail);
         } else {
           pendingEquipmentRoute = false;
           setTabsForRole(currentRole || "CONTRACTOR", getParam("page") || "request", { equipmentUnregistered: false });
@@ -863,13 +854,8 @@ window.__APP_VERSION__ = "20260414_tabs_gate";
       pendingEquipmentRoute = false;
       setTabsForRole(ctx.role, page, { equipmentUnregistered: !!deferEquipmentBoot });
       const role = ctx.role;
-      if (deferEquipmentBoot && (role === "INITIAL_SEAL" || role === "ADMIN")) {
-        setTabDisabled(tabInitial, true);
-      } else {
-        setTabDisabled(tabInitial, false);
-      }
       revealMainTabs();
-      const canRequest = role === "CONTRACTOR" || role === "PROCESSOR" || role === "ADMIN";
+      const canRequest = role === "CONTRACTOR" || role === "PROCESSOR" || role === "INITIAL_SEAL" || role === "ADMIN";
       const canProcess = role === "PROCESSOR" || role === "INITIAL_SEAL" || role === "ADMIN";
       const canInitial = role === "INITIAL_SEAL" || role === "ADMIN";
 
@@ -901,8 +887,6 @@ window.__APP_VERSION__ = "20260414_tabs_gate";
         if (deferEquipmentBoot) {
           setView("bootLoading");
           pendingEquipmentRoute = true;
-        } else if (role === "INITIAL_SEAL") {
-          setView("initial");
         } else if (canRequest) {
           setView("request");
         } else if (canInitial) {
@@ -914,15 +898,12 @@ window.__APP_VERSION__ = "20260414_tabs_gate";
         }
       }
 
-      tabRequest.addEventListener("click", () => setView("request"));
+      tabRequest.addEventListener("click", () => {});
       tabProcess.addEventListener("click", () => {
-        if (tabProcess.classList.contains("tab-disabled")) return;
-        setView("process");
-        loadRequest();
+        // Intentionally no-op; process page is entry by email link only.
       });
       tabInitial.addEventListener("click", () => {
-        if (tabInitial.classList.contains("tab-disabled")) return;
-        setView("initial");
+        // Intentionally no-op; use explicit actions instead.
       });
       if (registerInitialBtn) {
         registerInitialBtn.addEventListener("click", () => {
@@ -932,7 +913,6 @@ window.__APP_VERSION__ = "20260414_tabs_gate";
             return;
           }
           setView("initial");
-          setTabDisabled(tabInitial, false);
         });
       }
       if (contactOwnerBtn && contactModal) {
