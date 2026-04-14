@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260414_no_boot_route";
+window.__APP_VERSION__ = "20260414_robust";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -77,6 +77,38 @@ window.__APP_VERSION__ = "20260414_no_boot_route";
     markAppJsLoaded();
   }
 
+  // ==================== PENDING REQUEST MEMORY ====================
+  // Client-side safety net: remember recently submitted requests so refresh
+  // always shows "in progress" even if server lookup is slow or fails.
+  const PENDING_KEY = "__tamperSeal_pendingRequests";
+  const PENDING_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
+
+  function savePendingLocally(equipmentId, requestId) {
+    try {
+      const store = JSON.parse(sessionStorage.getItem(PENDING_KEY) || "{}");
+      store[equipmentId] = { requestId, ts: Date.now() };
+      sessionStorage.setItem(PENDING_KEY, JSON.stringify(store));
+    } catch (e) { /* ignore */ }
+  }
+
+  function getLocalPending(equipmentId) {
+    try {
+      const store = JSON.parse(sessionStorage.getItem(PENDING_KEY) || "{}");
+      const entry = store[equipmentId];
+      if (entry && (Date.now() - entry.ts) < PENDING_TTL_MS) return entry;
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  function clearLocalPending(equipmentId) {
+    try {
+      const store = JSON.parse(sessionStorage.getItem(PENDING_KEY) || "{}");
+      delete store[equipmentId];
+      sessionStorage.setItem(PENDING_KEY, JSON.stringify(store));
+    } catch (e) { /* ignore */ }
+  }
+
+  // ==================== VIEW MAP ====================
   const viewMap = {
     bootLoading: document.getElementById("bootLoadingView"),
     request: document.getElementById("requestView"),
@@ -97,23 +129,26 @@ window.__APP_VERSION__ = "20260414_no_boot_route";
   const tabInitial = document.getElementById("tabInitial");
   const userChip = document.getElementById("userChip");
 
-  function prepareShellBeforeAuth() {
-    if (viewMap.bootLoading) {
-      if (viewMap.request) viewMap.request.classList.add("hidden");
-      viewMap.bootLoading.classList.remove("hidden");
-    } else if (viewMap.request) {
-      // Backward-compatible fallback if deployed HTML is older.
-      viewMap.request.classList.remove("hidden");
-    }
-    if (mainTabs) mainTabs.style.visibility = "hidden";
-  }
-  prepareShellBeforeAuth();
+  // Immediately hide everything except bootLoading on startup
+  Object.entries(viewMap).forEach(([key, el]) => {
+    if (!el) return;
+    if (key === "bootLoading") { el.classList.remove("hidden"); }
+    else { el.classList.add("hidden"); }
+  });
+  if (mainTabs) mainTabs.style.visibility = "hidden";
 
   function revealMainTabs() {
     if (mainTabs) mainTabs.style.visibility = "";
   }
-  const snackbar = document.getElementById("snackbar");
 
+  // Force-hide legacy action buttons from older cached HTML
+  ["backHomeBtnDup","backHomeUnauthorizedBtn","backHomeProcessedBtn",
+   "backHomeBtn","downloadSummaryBtn","closeFinalizeBtn"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.style.display = "none"; el.disabled = true; }
+  });
+
+  const snackbar = document.getElementById("snackbar");
   const sealChips = document.getElementById("sealChips");
   const reqEquipment = document.getElementById("reqEquipment");
   const reqEmail = document.getElementById("reqEmail");
@@ -122,7 +157,6 @@ window.__APP_VERSION__ = "20260414_no_boot_route";
   const reqName = document.getElementById("reqName");
   const reqCompany = document.getElementById("reqCompany");
   const reqPhone = document.getElementById("reqPhone");
-
   const processSubtitle = document.getElementById("processSubtitle");
   const processDebug = document.getElementById("processDebug");
   const processStatus = document.getElementById("processStatus");
@@ -135,7 +169,6 @@ window.__APP_VERSION__ = "20260414_no_boot_route";
   const newSealSeg = document.getElementById("newSealSeg");
   const mappingSection = document.getElementById("mappingSection");
   const dateInitialsRow = document.getElementById("dateInitialsRow");
-
   const initEquipment = document.getElementById("initEquipment");
   const initDateL2 = document.getElementById("initDateL2");
   const initRemarks = document.getElementById("initRemarks");
@@ -155,59 +188,30 @@ window.__APP_VERSION__ = "20260414_no_boot_route";
   const inProgressSubtitle = document.getElementById("inProgressSubtitle");
   const inProgressBody = document.getElementById("inProgressBody");
   const inProgressMeta = document.getElementById("inProgressMeta");
-  const backHomeBtnDup = document.getElementById("backHomeBtnDup");
   const scanAnotherBtn = document.getElementById("scanAnotherBtn");
-  const backHomeUnauthorizedBtn = document.getElementById("backHomeUnauthorizedBtn");
-  const backHomeProcessedBtn = document.getElementById("backHomeProcessedBtn");
   const alreadyProcessedSubtitle = document.getElementById("alreadyProcessedSubtitle");
   const requestRef = document.getElementById("requestRef");
   const viewSealBtn = document.getElementById("viewSealBtn");
-  const backHomeBtn = document.getElementById("backHomeBtn");
-  const downloadSummaryBtn = document.getElementById("downloadSummaryBtn");
-  const closeFinalizeBtn = document.getElementById("closeFinalizeBtn");
-
   const submitBtn = document.getElementById("submitBtn");
   const clearBtn = document.getElementById("clearBtn");
   const finalizeBtn = document.getElementById("finalizeBtn");
   const cancelBtn = document.getElementById("cancelBtn");
   const urlParams = new URLSearchParams(window.location.search || "");
+
   let currentRole = null;
   let currentEmail = "";
   let notifiedNotRegistered = false;
   let isUnregistered = false;
-  /** When true, first equipment load should pick request vs initial after CONFIG response. */
-  let pendingEquipmentRoute = false;
 
-  function hideLegacyActionButtons() {
-    [
-      "backHomeBtnDup",
-      "backHomeUnauthorizedBtn",
-      "backHomeProcessedBtn",
-      "backHomeBtn",
-      "downloadSummaryBtn",
-      "closeFinalizeBtn"
-    ].forEach(id => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.setAttribute("hidden", "hidden");
-      el.style.display = "none";
-      if ("disabled" in el) el.disabled = true;
-    });
-  }
-  hideLegacyActionButtons();
-
+  // ==================== UTILITIES ====================
   function showToast(message) {
     const text = String(message || "");
-    if (snackbar && "open" in snackbar) {
-      snackbar.labelText = text;
-      snackbar.open = true;
-      return;
-    }
+    console.log("[toast]", text);
     try {
-      window.alert(text);
-    } catch (e) {
-      console.log(text);
-    }
+      if (snackbar && typeof snackbar.show === "function") { snackbar.labelText = text; snackbar.open = true; return; }
+      if (snackbar && "open" in snackbar) { snackbar.labelText = text; snackbar.open = true; return; }
+    } catch (e) { /* fallback */ }
+    try { window.alert(text); } catch (e) { /* ignore */ }
   }
 
   function showFriendlyError(err) {
@@ -223,81 +227,28 @@ window.__APP_VERSION__ = "20260414_no_boot_route";
     return (PAGE_PARAMS && PAGE_PARAMS[key]) ? PAGE_PARAMS[key] : (urlParams.get(key) || "");
   }
 
-  function setRequestLoadingState(isLoading, message) {
-    if (submitBtn) submitBtn.disabled = !!isLoading;
-    if (isLoading && requestSubtitle) {
-      requestSubtitle.textContent = message || "Checking equipment status...";
-    }
-  }
-
+  // ==================== VIEW SWITCHING ====================
   function setView(view) {
-    Object.values(viewMap).forEach(v => {
-      if (v) v.classList.add("hidden");
-    });
-    const fallbackView = viewMap.request || viewMap.unregistered || viewMap.initial || null;
-    const targetView = viewMap[view] || fallbackView;
-    if (targetView) targetView.classList.remove("hidden");
-    const effectiveView = viewMap[view] ? view : (
-      targetView === viewMap.request ? "request" :
-      targetView === viewMap.unregistered ? "unregistered" :
-      targetView === viewMap.initial ? "initial" : view
-    );
+    console.log("[setView]", view);
+    Object.values(viewMap).forEach(v => { if (v) v.classList.add("hidden"); });
+    const target = viewMap[view] || viewMap.request;
+    if (target) target.classList.remove("hidden");
     if (mainTabs) {
-      if (effectiveView === "request") mainTabs.activeTabIndex = 0;
-      if (effectiveView === "process") mainTabs.activeTabIndex = 1;
-      if (effectiveView === "initial") mainTabs.activeTabIndex = 2;
-      if (effectiveView === "bootLoading") {
-        const role = currentRole || "";
-        mainTabs.activeTabIndex = role === "INITIAL_SEAL" || role === "ADMIN" ? 2 : 0;
-      }
-      if (effectiveView === "unregistered") {
-        const role = currentRole || "";
-        if (role === "INITIAL_SEAL" || role === "ADMIN") mainTabs.activeTabIndex = 2;
+      if (view === "request" || view === "requestSuccess") mainTabs.activeTabIndex = 0;
+      if (view === "process" || view === "finalizeSuccess") mainTabs.activeTabIndex = 1;
+      if (view === "initial" || view === "initialSuccess") mainTabs.activeTabIndex = 2;
+      if (view === "unregistered") {
+        const r = currentRole || "";
+        mainTabs.activeTabIndex = (r === "INITIAL_SEAL" || r === "ADMIN") ? 2 : 0;
       }
     }
   }
 
-  function lockEquipmentField(value) {
-    if (!value) return;
-    const apply = () => {
-      reqEquipment.value = value;
-      reqEquipment.setAttribute("value", value);
-      reqEquipment.disabled = true;
-      reqEquipment.readOnly = true;
-    };
-    if (window.customElements && customElements.whenDefined) {
-      customElements.whenDefined("md-filled-text-field").then(apply);
-    } else {
-      apply();
-    }
-  }
-
-  function setInitEquipmentField(value) {
-    if (!value) return;
-    const apply = () => {
-      initEquipment.value = value;
-      initEquipment.setAttribute("value", value);
-    };
-    if (window.customElements && customElements.whenDefined) {
-      customElements.whenDefined("md-filled-text-field").then(apply);
-    } else {
-      apply();
-    }
-  }
-
-  function setRequesterEmail(value) {
-    if (!value) return;
-    const apply = () => {
-      reqEmail.value = value;
-      reqEmail.setAttribute("value", value);
-      reqEmail.disabled = true;
-      reqEmail.readOnly = true;
-    };
-    if (window.customElements && customElements.whenDefined) {
-      customElements.whenDefined("md-filled-text-field").then(apply);
-    } else {
-      apply();
-    }
+  function showInProgress(equipmentId, message, meta) {
+    if (inProgressSubtitle) inProgressSubtitle.textContent = equipmentId ? "Equipment: " + equipmentId : "";
+    if (inProgressBody) inProgressBody.textContent = message || "Oops, someone had requested earlier. Better luck and be earlier next time pal.";
+    if (inProgressMeta) inProgressMeta.textContent = meta || "";
+    setView("inProgress");
   }
 
   function setTabsForRole(role, page, opts) {
@@ -306,15 +257,9 @@ window.__APP_VERSION__ = "20260414_no_boot_route";
     const eqInUrl = !!getParam("eq");
     const lockToInitialFlow = equipmentUnregistered && eqInUrl;
     const showRequestTab = !lockToInitialFlow && (
-      role === "CONTRACTOR" ||
-      role === "PROCESSOR" ||
-      role === "INITIAL_SEAL" ||
-      role === "ADMIN"
+      role === "CONTRACTOR" || role === "PROCESSOR" || role === "INITIAL_SEAL" || role === "ADMIN"
     );
-    const showProcessTab = !lockToInitialFlow && (
-      role === "PROCESSOR" ||
-      role === "ADMIN"
-    );
+    const showProcessTab = !lockToInitialFlow && (role === "PROCESSOR" || role === "ADMIN");
     const showInitialTab = role === "INITIAL_SEAL" || role === "ADMIN";
 
     tabRequest.style.display = "none";
@@ -330,7 +275,6 @@ window.__APP_VERSION__ = "20260414_no_boot_route";
       tabProcess.style.display = "";
     }
 
-    // Navigation tabs stay informational only to avoid workflow loopholes.
     setTabDisabled(tabRequest, true);
     setTabDisabled(tabProcess, true);
     setTabDisabled(tabInitial, true);
@@ -339,6 +283,25 @@ window.__APP_VERSION__ = "20260414_no_boot_route";
   function setTabDisabled(tab, disabled) {
     if (!tab) return;
     tab.classList.toggle("tab-disabled", !!disabled);
+  }
+
+  // ==================== FIELD HELPERS ====================
+  function lockEquipmentField(value) {
+    if (!value) return;
+    const apply = () => { reqEquipment.value = value; reqEquipment.setAttribute("value", value); reqEquipment.disabled = true; reqEquipment.readOnly = true; };
+    if (window.customElements && customElements.whenDefined) { customElements.whenDefined("md-filled-text-field").then(apply); } else { apply(); }
+  }
+
+  function setInitEquipmentField(value) {
+    if (!value) return;
+    const apply = () => { initEquipment.value = value; initEquipment.setAttribute("value", value); };
+    if (window.customElements && customElements.whenDefined) { customElements.whenDefined("md-filled-text-field").then(apply); } else { apply(); }
+  }
+
+  function setRequesterEmail(value) {
+    if (!value) return;
+    const apply = () => { reqEmail.value = value; reqEmail.setAttribute("value", value); reqEmail.disabled = true; reqEmail.readOnly = true; };
+    if (window.customElements && customElements.whenDefined) { customElements.whenDefined("md-filled-text-field").then(apply); } else { apply(); }
   }
 
   function renderSealChips(seals) {
@@ -364,86 +327,65 @@ window.__APP_VERSION__ = "20260414_no_boot_route";
       .map(chip => chip.getAttribute("label"));
   }
 
+  // ==================== PROCESS VIEW ====================
   function renderProcessSummary(req) {
-    processSubtitle.textContent = `Request ID: ${req.RequestId}`;
+    processSubtitle.textContent = "Request ID: " + req.RequestId;
     processStatus.innerHTML = "";
     const statusChip = document.createElement("md-assist-chip");
     statusChip.className = "status-chip";
     statusChip.setAttribute("label", req.Status || "PENDING");
     processStatus.appendChild(statusChip);
-
     processSummary.innerHTML = "";
-    [
-      ["Equipment ID", req.EquipmentId],
-      ["Requester", `${req.Name} (${req.Company})`],
-      ["Phone", req.Phone],
-      ["Reason", req.Reason]
-    ].forEach(([label, value]) => {
+    [["Equipment ID", req.EquipmentId], ["Requester", req.Name + " (" + req.Company + ")"], ["Phone", req.Phone], ["Reason", req.Reason]].forEach(([label, value]) => {
       const item = document.createElement("div");
       item.className = "kv-item";
-      item.innerHTML = `<div class="kv-label">${label}</div><div class="kv-value">${value || ""}</div>`;
+      item.innerHTML = '<div class="kv-label">' + label + '</div><div class="kv-value">' + (value || "") + '</div>';
       processSummary.appendChild(item);
     });
-
     processSeals.innerHTML = "";
     const selected = JSON.parse(req.SelectedOldSeals || "[]");
-    selected.forEach(seal => {
-      const chip = document.createElement("md-assist-chip");
-      chip.setAttribute("label", seal);
-      processSeals.appendChild(chip);
-    });
-
+    selected.forEach(seal => { const chip = document.createElement("md-assist-chip"); chip.setAttribute("label", seal); processSeals.appendChild(chip); });
     mappingList.innerHTML = "";
     selected.forEach(seal => {
       const row = document.createElement("div");
       row.className = "row two";
-      row.innerHTML = `
-        <md-assist-chip label="${seal}"></md-assist-chip>
-        <md-outlined-text-field class="mapping-field" data-old="${seal}" label="New seal for ${seal}" supporting-text="Required"></md-outlined-text-field>
-      `;
+      row.innerHTML = '<md-assist-chip label="' + seal + '"></md-assist-chip><md-outlined-text-field class="mapping-field" data-old="' + seal + '" label="New seal for ' + seal + '" supporting-text="Required"></md-outlined-text-field>';
       mappingList.appendChild(row);
     });
   }
 
   function showProcessEmpty(message, rid) {
-    const suffix = rid ? ` (${rid})` : "";
+    const suffix = rid ? " (" + rid + ")" : "";
     processSubtitle.textContent = (message || "Request details unavailable.") + suffix;
     processStatus.innerHTML = "";
     processSummary.innerHTML = "";
     processSeals.innerHTML = "";
     mappingList.innerHTML = "";
-    if (processDebug && getParam("debugUi") !== "1") {
-      processDebug.classList.add("hidden");
-    }
+    if (processDebug && getParam("debugUi") !== "1") processDebug.classList.add("hidden");
   }
 
   function renderProcessDebug(info) {
     if (!processDebug) return;
     const next = JSON.stringify(info, null, 2);
     const existing = processDebug.textContent ? processDebug.textContent.trim() : "";
-    processDebug.textContent = existing ? `${existing}\n\n${next}` : next;
+    processDebug.textContent = existing ? existing + "\n\n" + next : next;
     processDebug.classList.remove("hidden");
     processDebug.style.display = "block";
   }
 
   function serializeError(err) {
     if (!err) return null;
-    const message = (err && err.message) ? err.message : String(err || "");
-    const stack = err && err.stack ? String(err.stack) : "";
-    const name = err && err.name ? String(err.name) : "";
-    return { name, message, stack };
+    return { name: err.name || "", message: err.message || String(err), stack: err.stack || "" };
   }
 
+  // ==================== SEGMENTED / SEAL ROWS ====================
   function updateSealAppliedView() {
     const selected = newSealSeg.querySelector(".segmented-btn[aria-pressed='true']");
     const value = selected ? selected.value : "No";
     const show = value === "Yes";
     mappingSection.classList.toggle("hidden", !show);
     dateInitialsRow.classList.toggle("hidden", !show);
-    mappingList.querySelectorAll(".mapping-field").forEach(field => {
-      field.disabled = !show;
-      if (!show) field.value = "";
-    });
+    mappingList.querySelectorAll(".mapping-field").forEach(field => { field.disabled = !show; if (!show) field.value = ""; });
     dateInitialsField.disabled = !show;
     if (!show) dateInitialsField.value = "";
   }
@@ -456,16 +398,10 @@ window.__APP_VERSION__ = "20260414_no_boot_route";
     });
   });
 
-  function addSealRow(value = "") {
+  function addSealRow(value) {
     const row = document.createElement("div");
     row.className = "seal-row";
-    row.innerHTML = `
-      <md-outlined-text-field class="seal-input" label="Seal ID" value="${value}" supporting-text="Required"></md-outlined-text-field>
-      <button class="icon-btn seal-remove" aria-label="Remove seal">
-        <span class="material-symbols-outlined" aria-hidden="true">delete</span>
-        <span class="tooltip">Remove</span>
-      </button>
-    `;
+    row.innerHTML = '<md-outlined-text-field class="seal-input" label="Seal ID" value="' + (value || "") + '" supporting-text="Required"></md-outlined-text-field><button class="icon-btn seal-remove" aria-label="Remove seal"><span class="material-symbols-outlined" aria-hidden="true">delete</span><span class="tooltip">Remove</span></button>';
     sealList.appendChild(row);
     row.querySelector(".seal-remove").addEventListener("click", () => {
       if (sealList.querySelectorAll(".seal-row").length <= 1) return;
@@ -477,361 +413,187 @@ window.__APP_VERSION__ = "20260414_no_boot_route";
 
   function updateSealRemoveState() {
     const rows = sealList.querySelectorAll(".seal-row");
-    rows.forEach(row => {
-      const removeBtn = row.querySelector(".seal-remove");
-      removeBtn.disabled = rows.length <= 1;
-    });
+    rows.forEach(row => { row.querySelector(".seal-remove").disabled = rows.length <= 1; });
   }
 
   addSealBtn.addEventListener("click", () => addSealRow(""));
 
   function collectSealIds() {
-    const values = Array.from(sealList.querySelectorAll(".seal-input"))
-      .map(input => input.value.trim())
-      .filter(Boolean);
+    const values = Array.from(sealList.querySelectorAll(".seal-input")).map(input => input.value.trim()).filter(Boolean);
     const duplicates = values.filter((v, i, arr) => arr.indexOf(v) !== i);
     sealList.querySelectorAll(".seal-input").forEach(input => {
-      if (duplicates.includes(input.value.trim())) {
-        input.setAttribute("error", "");
-        input.setAttribute("supporting-text", "Duplicate");
-      } else {
-        input.removeAttribute("error");
-        input.setAttribute("supporting-text", "Required");
-      }
+      if (duplicates.includes(input.value.trim())) { input.setAttribute("error", ""); input.setAttribute("supporting-text", "Duplicate"); }
+      else { input.removeAttribute("error"); input.setAttribute("supporting-text", "Required"); }
     });
     return { values, duplicates };
   }
 
+  // ==================== ACTIONS ====================
   saveInitialBtn.addEventListener("click", () => {
     const { values, duplicates } = collectSealIds();
-    if (duplicates.length) {
-      showToast("Duplicate seal IDs detected");
-      return;
-    }
+    if (duplicates.length) { showToast("Duplicate seal IDs detected"); return; }
     google.script.run
-      .withSuccessHandler(() => {
-        setView("initialSuccess");
-      })
+      .withSuccessHandler(() => setView("initialSuccess"))
       .withFailureHandler(err => showToast(err.message || err))
-      .initialSealSave({
-        equipmentId: initEquipment.value,
-        dateL2: initDateL2.value,
-        remarks: initRemarks.value,
-        seals: values
-      });
+      .initialSealSave({ equipmentId: initEquipment.value, dateL2: initDateL2.value, remarks: initRemarks.value, seals: values });
   });
 
   submitBtn.addEventListener("click", () => {
     const selectedSeals = getSelectedSeals();
     const equipmentId = reqEquipment.value || getParam("eq");
-    if (!equipmentId || !selectedSeals.length) {
-      showToast("Select at least one seal");
-      return;
-    }
-    if (!reqReason.value.trim() || !reqName.value.trim() || !reqCompany.value.trim() || !reqPhone.value.trim()) {
-      showToast("Fill all required fields");
-      return;
-    }
+    if (!equipmentId || !selectedSeals.length) { showToast("Select at least one seal"); return; }
+    if (!reqReason.value.trim() || !reqName.value.trim() || !reqCompany.value.trim() || !reqPhone.value.trim()) { showToast("Fill all required fields"); return; }
     submitBtn.disabled = true;
     google.script.run
       .withSuccessHandler(res => {
         submitBtn.disabled = false;
-        if (requestRef) requestRef.textContent = `Ref ID: ${res.requestId} recorded.`;
+        savePendingLocally(equipmentId, res.requestId);
+        if (requestRef) requestRef.textContent = "Ref ID: " + res.requestId + " recorded.";
         setView("requestSuccess");
       })
       .withFailureHandler(err => {
         submitBtn.disabled = false;
-        const message = err && err.message ? err.message : String(err || "Submit failed");
-        if (String(message).toLowerCase().includes("not authorized")) {
-          showToast("Submit failed: this account is not authorized on server deployment yet.");
-          return;
-        }
-        showToast("Submit failed: " + message);
+        const msg = err && err.message ? err.message : String(err || "Submit failed");
+        showToast("Submit failed: " + msg);
       })
-      .submitRequest({
-        equipmentId,
-        selectedSeals,
-        reason: reqReason.value,
-        name: reqName.value,
-        company: reqCompany.value,
-        phone: reqPhone.value
-      });
+      .submitRequest({ equipmentId, selectedSeals, reason: reqReason.value, name: reqName.value, company: reqCompany.value, phone: reqPhone.value });
   });
 
   if (clearBtn) {
     clearBtn.addEventListener("click", () => {
-      reqReason.value = "";
-      reqName.value = "";
-      reqCompany.value = "";
-      reqPhone.value = "";
-      sealChips.querySelectorAll("md-filter-chip[selected]").forEach(chip => {
-        chip.removeAttribute("selected");
-      });
+      reqReason.value = ""; reqName.value = ""; reqCompany.value = ""; reqPhone.value = "";
+      sealChips.querySelectorAll("md-filter-chip[selected]").forEach(chip => chip.removeAttribute("selected"));
     });
   }
 
   finalizeBtn.addEventListener("click", () => {
     const selected = newSealSeg.querySelector(".segmented-btn[aria-pressed='true']");
     const newSealApplied = selected ? selected.value : "No";
-    if (!removalDate.value || !processRemarks.value.trim()) {
-      showToast("Date of removal and remarks required");
-      return;
-    }
-    if (newSealApplied === "Yes" && !dateInitialsField.value.trim()) {
-      showToast("Date / Initials required for new seals");
-      return;
-    }
+    if (!removalDate.value || !processRemarks.value.trim()) { showToast("Date of removal and remarks required"); return; }
+    if (newSealApplied === "Yes" && !dateInitialsField.value.trim()) { showToast("Date / Initials required for new seals"); return; }
     const mapping = {};
-    mappingList.querySelectorAll(".mapping-field").forEach(field => {
-      mapping[field.dataset.old] = field.value.trim();
-    });
-    if (newSealApplied === "Yes") {
-      const missing = Object.values(mapping).some(v => !v);
-      if (missing) {
-        showToast("Provide a new seal ID for each old seal");
-        return;
-      }
-    }
-
+    mappingList.querySelectorAll(".mapping-field").forEach(field => { mapping[field.dataset.old] = field.value.trim(); });
+    if (newSealApplied === "Yes" && Object.values(mapping).some(v => !v)) { showToast("Provide a new seal ID for each old seal"); return; }
     google.script.run
       .withSuccessHandler(() => {
+        const eq = getParam("eq");
+        if (eq) clearLocalPending(eq);
         setView("finalizeSuccess");
       })
       .withFailureHandler(err => showToast(err.message || err))
-      .finalizeRequest({
-        requestId: PAGE_PARAMS.rid,
-        newSealApplied,
-        removalDate: removalDate.value,
-        dateInitials: dateInitialsField.value,
-        remarks: processRemarks.value,
-        mapping
-      });
+      .finalizeRequest({ requestId: PAGE_PARAMS.rid, newSealApplied, removalDate: removalDate.value, dateInitials: dateInitialsField.value, remarks: processRemarks.value, mapping });
   });
 
   cancelBtn.addEventListener("click", () => {
-    if (!processRemarks.value.trim()) {
-      showToast("Remarks required to cancel");
-      return;
-    }
+    if (!processRemarks.value.trim()) { showToast("Remarks required to cancel"); return; }
     google.script.run
-      .withSuccessHandler(() => showToast("Request cancelled"))
+      .withSuccessHandler(() => { const eq = getParam("eq"); if (eq) clearLocalPending(eq); showToast("Request cancelled"); })
       .withFailureHandler(err => showToast(err.message || err))
-      .cancelRequest({
-        requestId: PAGE_PARAMS.rid,
-        remarks: processRemarks.value
-      });
+      .cancelRequest({ requestId: PAGE_PARAMS.rid, remarks: processRemarks.value });
   });
 
+  // ==================== LOAD REQUEST (process page) ====================
   function loadRequest() {
     const rid = getParam("rid");
     const debugEnabled = getParam("debugUi") === "1";
-    if (!rid) {
-      showProcessEmpty("No request ID in URL.", rid);
-      if (debugEnabled) {
-        renderProcessDebug({
-          pageParams: PAGE_PARAMS,
-          urlSearch: window.location.search
-        });
-      }
-      return;
-    }
-    if (debugEnabled) {
-      renderProcessDebug({
-        debug: "client-init",
-        pageParams: PAGE_PARAMS,
-        urlSearch: window.location.search,
-        appVersion: window.__APP_VERSION__ || "",
-        hasGoogle: typeof google !== "undefined",
-        hasScriptRun: !!(google && google.script && google.script.run),
-        rid
-      });
-    }
-    if (!(google && google.script && google.script.run)) {
-      showProcessEmpty("google.script.run unavailable.", rid);
-      return;
-    }
-    if (debugEnabled) {
-      renderProcessDebug({
-        debug: "client",
-        pageParams: PAGE_PARAMS,
-        urlSearch: window.location.search,
-        appVersion: window.__APP_VERSION__ || "",
-        rid
-      });
-      try {
-        google.script.run
-          .withSuccessHandler(renderProcessDebug)
-          .withFailureHandler(err => renderProcessDebug({
-            debug: "debugProcessFetchFailure",
-            rid,
-            error: serializeError(err)
-          }))
-          .debugProcessFetch(rid);
-      } catch (err) {
-        renderProcessDebug({
-          debug: "debugProcessFetchThrow",
-          rid,
-          error: serializeError(err)
-        });
-      }
-    }
+    if (!rid) { showProcessEmpty("No request ID in URL.", rid); return; }
+    if (debugEnabled) renderProcessDebug({ debug: "client-init", rid, pageParams: PAGE_PARAMS });
+    if (!(google && google.script && google.script.run)) { showProcessEmpty("google.script.run unavailable.", rid); return; }
+
     let responded = false;
     const timeoutId = setTimeout(() => {
       if (responded) return;
-      renderProcessDebug({
-        debug: "getRequestTimeout",
-        rid,
-        message: "No response from server within 8s"
-      });
       showProcessEmpty("Request details unavailable.", rid);
     }, 8000);
 
-    const handleRequestSuccess = req => {
+    const handleSuccess = req => {
       responded = true;
       clearTimeout(timeoutId);
-      if (debugEnabled) {
-        renderProcessDebug({
-          debug: "getRequestSuccess",
-          rid,
-          type: typeof req,
-          keys: req ? Object.keys(req) : [],
-          req
-        });
-      }
-      if (!req) {
-        showProcessEmpty("Request details unavailable.", rid);
-        if (debugEnabled) {
-          google.script.run.withSuccessHandler(renderProcessDebug)
-            .debugProcessFetch(rid);
-        }
-        return;
-      }
-      if (!req.RequestId) {
-        req.RequestId = req.requestId || req.RequestID || req.requestID || rid || "";
-      }
-      if (!req.RequestId && Object.keys(req).length === 0) {
-        showProcessEmpty("Request details unavailable.", rid);
-        return;
-      }
-      if (req._error) {
-        showProcessEmpty(req._error + ` (Sheet: ${req._sheetName})`, rid);
-        google.script.run.withSuccessHandler(renderProcessDebug)
-          .debugProcessFetch(rid);
-        return;
-      }
+      if (debugEnabled) renderProcessDebug({ debug: "getRequestSuccess", req });
+      if (!req || (!req.RequestId && Object.keys(req).length === 0)) { showProcessEmpty("Request details unavailable.", rid); return; }
+      if (!req.RequestId) req.RequestId = req.requestId || req.RequestID || rid || "";
+      if (req._error) { showProcessEmpty(req._error, rid); return; }
       const status = String(req.Status || "").trim().toUpperCase();
       if (status && status !== "PENDING") {
-        if (alreadyProcessedSubtitle) {
-          alreadyProcessedSubtitle.textContent = `Request ID: ${req.RequestId}`;
-        }
+        if (alreadyProcessedSubtitle) alreadyProcessedSubtitle.textContent = "Request ID: " + req.RequestId;
         setView("alreadyProcessed");
         return;
       }
-      if (!debugEnabled && processDebug) {
-        processDebug.classList.add("hidden");
-      }
+      if (!debugEnabled && processDebug) processDebug.classList.add("hidden");
       renderProcessSummary(req);
     };
 
-    const handleRequestFailure = err => {
+    const handleFailure = err => {
       responded = true;
       clearTimeout(timeoutId);
       showFriendlyError(err);
-      const message = (err && err.message) ? err.message : String(err || "");
-      showProcessEmpty(message || "Request details unavailable.", rid);
-      if (debugEnabled) {
-        renderProcessDebug({
-          debug: "getRequestFailure",
-          rid,
-          error: serializeError(err)
-        });
-      }
-      google.script.run.withSuccessHandler(renderProcessDebug)
-        .debugProcessFetch(rid);
+      showProcessEmpty((err && err.message) || "Request details unavailable.", rid);
     };
 
-    const callRequest = methodName => {
-      google.script.run
-        .withSuccessHandler(handleRequestSuccess)
-        .withFailureHandler(handleRequestFailure)
-        [methodName](rid);
-    };
-
-    try {
-      callRequest("getRequestClient");
-    } catch (err) {
-      renderProcessDebug({
-        debug: "getRequestThrow",
-        rid,
-        error: serializeError(err),
-        fallback: "getRequest"
-      });
-      try {
-        callRequest("getRequest");
-      } catch (err2) {
-        responded = true;
-        clearTimeout(timeoutId);
-        renderProcessDebug({
-          debug: "getRequestThrowFallback",
-          rid,
-          error: serializeError(err2)
-        });
-        showProcessEmpty("Request details unavailable.", rid);
-      }
+    try { google.script.run.withSuccessHandler(handleSuccess).withFailureHandler(handleFailure).getRequestClient(rid); }
+    catch (err) {
+      try { google.script.run.withSuccessHandler(handleSuccess).withFailureHandler(handleFailure).getRequest(rid); }
+      catch (err2) { responded = true; clearTimeout(timeoutId); showProcessEmpty("Request details unavailable.", rid); }
     }
   }
 
+  // ==================== LOAD EQUIPMENT (request/initial page) ====================
   function loadEquipment() {
     const eq = getParam("eq");
     if (!eq) return;
-    setRequestLoadingState(true, "Checking equipment status...");
+    console.log("[loadEquipment] eq=" + eq);
+
+    // Client-side pending check FIRST — instant, no server wait
+    const localPending = getLocalPending(eq);
+    if (localPending && getParam("page") !== "process") {
+      console.log("[loadEquipment] local pending found", localPending);
+      showInProgress(eq, "Oops, someone had requested earlier. Better luck and be earlier next time pal.", "Ref: " + (localPending.requestId || ""));
+      return;
+    }
+
     lockEquipmentField(eq);
     setInitEquipmentField(eq);
-    if (unregisteredSubtitle) unregisteredSubtitle.textContent = `Equipment: ${eq}`;
+    if (unregisteredSubtitle) unregisteredSubtitle.textContent = "Equipment: " + eq;
+    if (requestSubtitle) requestSubtitle.textContent = "Checking equipment status...";
+    if (submitBtn) submitBtn.disabled = true;
+
+    let responded = false;
+    const timeoutId = setTimeout(() => {
+      if (responded) return;
+      console.log("[loadEquipment] TIMEOUT after 15s");
+      if (requestSubtitle) requestSubtitle.textContent = "Server is taking too long. Please refresh the page.";
+    }, 15000);
+
     google.script.run
       .withSuccessHandler(data => {
+        responded = true;
+        clearTimeout(timeoutId);
+        console.log("[loadEquipment] success", JSON.stringify(data ? { pendingRequest: !!data.pendingRequest, isRegistered: data.isRegistered, hasInitialSeal: data.hasInitialSeal } : null));
         const role = currentRole || "CONTRACTOR";
         const canInitial = role === "INITIAL_SEAL" || role === "ADMIN";
-        const isRegistered = (typeof data.isRegistered === "boolean")
-          ? data.isRegistered
-          : !!data.hasInitialSeal;
+        const isRegistered = (typeof data.isRegistered === "boolean") ? data.isRegistered : !!data.hasInitialSeal;
 
         lockEquipmentField(data.equipmentId);
         setInitEquipmentField(data.equipmentId);
-        const dateText = data.dateL2 ? ` • L2: ${data.dateL2}` : "";
-        requestSubtitle.textContent = `Equipment: ${data.equipmentId}${dateText}`;
-        initialSubtitle.textContent = `Equipment: ${data.equipmentId}`;
-        if (unregisteredSubtitle) unregisteredSubtitle.textContent = `Equipment: ${data.equipmentId}`;
+        const dateText = data.dateL2 ? " \u2022 L2: " + data.dateL2 : "";
+        if (requestSubtitle) requestSubtitle.textContent = "Equipment: " + data.equipmentId + dateText;
+        if (initialSubtitle) initialSubtitle.textContent = "Equipment: " + data.equipmentId;
+        if (unregisteredSubtitle) unregisteredSubtitle.textContent = "Equipment: " + data.equipmentId;
 
         const page = getParam("page") || "request";
-        if (data.pendingRequest && page === "request") {
-          setRequestLoadingState(false);
-          pendingEquipmentRoute = false;
-          setTabsForRole(currentRole || "CONTRACTOR", page, { equipmentUnregistered: false });
-          const requester = data.pendingRequest.name || "Another contractor";
-          const company = data.pendingRequest.company ? ` from ${data.pendingRequest.company}` : "";
-          const createdAt = data.pendingRequest.createdAt ? `Submitted at: ${data.pendingRequest.createdAt}` : "";
-          if (inProgressSubtitle) inProgressSubtitle.textContent = `Equipment: ${data.equipmentId}`;
-          if (inProgressBody) {
-            inProgressBody.textContent = "Oops, someone had requested earlier. Better luck and be earlier next time pal.";
-          }
-          if (inProgressMeta) {
-            inProgressMeta.textContent = createdAt || "Scanning a different unit? Just scan its QR code to begin.";
-          }
-          setView("inProgress");
+
+        // Pending request detected by server
+        if (data.pendingRequest && page !== "process") {
+          console.log("[loadEquipment] server says PENDING");
+          savePendingLocally(data.equipmentId, data.pendingRequest.requestId || "");
+          const createdAt = data.pendingRequest.createdAt ? "Submitted at: " + data.pendingRequest.createdAt : "";
+          showInProgress(data.equipmentId, "Oops, someone had requested earlier. Better luck and be earlier next time pal.", createdAt);
           return;
         }
 
         if (!isRegistered) {
-          setRequestLoadingState(false);
-          pendingEquipmentRoute = false;
-          isUnregistered = true;
-          renderSealChips([]);
           submitBtn.disabled = true;
-          if (!notifiedNotRegistered) {
-            showToast("Not registered");
-            notifiedNotRegistered = true;
-          }
+          if (!notifiedNotRegistered) { showToast("Not registered"); notifiedNotRegistered = true; }
           if (unregisteredActions) {
             if (registerInitialBtn) registerInitialBtn.style.display = canInitial ? "" : "none";
             if (backRequestBtn) backRequestBtn.style.display = "none";
@@ -839,41 +601,26 @@ window.__APP_VERSION__ = "20260414_no_boot_route";
             if (refreshUnregBtn) refreshUnregBtn.style.display = "none";
           }
           setTabsForRole(currentRole || "CONTRACTOR", page, { equipmentUnregistered: true });
-          if (mainTabs && (currentRole === "INITIAL_SEAL" || currentRole === "ADMIN")) {
-            mainTabs.activeTabIndex = 2;
-          }
+          if (mainTabs && canInitial) mainTabs.activeTabIndex = 2;
           setView("unregistered");
           return;
         }
 
+        // Registered — show request form
         isUnregistered = false;
-        setRequestLoadingState(false);
         submitBtn.disabled = false;
         renderSealChips(data.currentSeals || []);
-        const p = getParam("page") || "request";
-        setTabsForRole(currentRole || "CONTRACTOR", p, { equipmentUnregistered: false });
-        const bootActive = viewMap.bootLoading && !viewMap.bootLoading.classList.contains("hidden");
-        const unregActive = viewMap.unregistered && !viewMap.unregistered.classList.contains("hidden");
-        if (pendingEquipmentRoute || bootActive || unregActive) {
-          pendingEquipmentRoute = false;
-          if (p === "initial") {
-            setView("initial");
-          } else if (p === "request" || !getParam("page")) {
-            const r = currentRole || "CONTRACTOR";
-            const canRequestRole = r === "CONTRACTOR" || r === "PROCESSOR" || r === "INITIAL_SEAL" || r === "ADMIN";
-            if (canRequestRole) setView("request");
-            else setView("initial");
-          }
-        }
+        setTabsForRole(currentRole || "CONTRACTOR", page, { equipmentUnregistered: false });
+        setView("request");
       })
       .withFailureHandler(err => {
-        setRequestLoadingState(false);
+        responded = true;
+        clearTimeout(timeoutId);
+        console.log("[loadEquipment] FAILURE", err && err.message);
         const message = (err && err.message) ? err.message : String(err || "");
-        showFriendlyError(err);
         if (message.toLowerCase().includes("equipment id not found")) {
-          pendingEquipmentRoute = false;
           submitBtn.disabled = true;
-          if (unregisteredSubtitle) unregisteredSubtitle.textContent = `Equipment: ${eq}`;
+          if (unregisteredSubtitle) unregisteredSubtitle.textContent = "Equipment: " + eq;
           if (unregisteredActions) {
             if (registerInitialBtn) registerInitialBtn.style.display = "none";
             if (backRequestBtn) backRequestBtn.style.display = "none";
@@ -881,100 +628,66 @@ window.__APP_VERSION__ = "20260414_no_boot_route";
             if (refreshUnregBtn) refreshUnregBtn.style.display = "";
           }
           setTabsForRole(currentRole || "CONTRACTOR", getParam("page") || "request", { equipmentUnregistered: true });
-          if (mainTabs && (currentRole === "INITIAL_SEAL" || currentRole === "ADMIN")) {
-            mainTabs.activeTabIndex = 2;
-          }
+          if (mainTabs && (currentRole === "INITIAL_SEAL" || currentRole === "ADMIN")) mainTabs.activeTabIndex = 2;
           setView("unregistered");
         } else {
-          pendingEquipmentRoute = false;
-          setTabsForRole(currentRole || "CONTRACTOR", getParam("page") || "request", { equipmentUnregistered: false });
-          setView("request");
+          if (requestSubtitle) requestSubtitle.textContent = "Error loading equipment: " + message;
+          submitBtn.disabled = true;
+          showFriendlyError(err);
         }
       })
       .getEquipmentData(eq);
   }
 
+  // ==================== INIT ====================
   function init() {
     const eqPrefill = getParam("eq");
     if (eqPrefill) {
       lockEquipmentField(eqPrefill);
       setInitEquipmentField(eqPrefill);
-      requestSubtitle.textContent = `Equipment: ${eqPrefill}`;
-      initialSubtitle.textContent = `Equipment: ${eqPrefill}`;
+      if (requestSubtitle) requestSubtitle.textContent = "Equipment: " + eqPrefill;
+      if (initialSubtitle) initialSubtitle.textContent = "Equipment: " + eqPrefill;
     } else {
       showToast("No equipment ID in URL (eq=...)");
     }
+
     google.script.run.withSuccessHandler(ctx => {
       currentRole = ctx.role;
       currentEmail = ctx.email || "";
+      console.log("[init] role=" + ctx.role + " email=" + ctx.email);
       userChip.setAttribute("label", ctx.email);
       setRequesterEmail(ctx.email);
 
       const page = getParam("page") || "request";
-      const deferEquipmentBoot = !!eqPrefill && page !== "process";
-      pendingEquipmentRoute = false;
-      setTabsForRole(ctx.role, page, { equipmentUnregistered: !!deferEquipmentBoot });
-      const role = ctx.role;
+      setTabsForRole(ctx.role, page, { equipmentUnregistered: !!eqPrefill });
       revealMainTabs();
+
+      const role = ctx.role;
       const canRequest = role === "CONTRACTOR" || role === "PROCESSOR" || role === "INITIAL_SEAL" || role === "ADMIN";
       const canProcess = role === "PROCESSOR" || role === "INITIAL_SEAL" || role === "ADMIN";
       const canInitial = role === "INITIAL_SEAL" || role === "ADMIN";
 
       if (page === "process") {
-        if (role !== "PROCESSOR") {
-          setView("unauthorized");
-          return;
-        }
-        if (canProcess) {
-          setView("process");
-          loadRequest();
-        } else {
-          showToast("Not authorized");
-          setView(canRequest ? "request" : "initial");
-        }
-      } else if (page === "initial") {
-        if (canInitial) {
-          if (deferEquipmentBoot) {
-            setRequestLoadingState(true, "Checking equipment status...");
-            setView("request");
-            pendingEquipmentRoute = true;
-          } else {
-            setView("initial");
-          }
-        } else {
-          showToast("Not authorized");
-          setView(canRequest ? "request" : "process");
-        }
-      } else {
-        if (deferEquipmentBoot) {
-          setRequestLoadingState(true, "Checking equipment status...");
-          setView("request");
-          pendingEquipmentRoute = true;
-        } else if (canRequest) {
-          setView("request");
-        } else if (canInitial) {
-          showToast("Not authorized");
-          setView("initial");
-        } else if (canProcess) {
-          showToast("Not authorized");
-          setView("process");
-        }
+        if (role !== "PROCESSOR") { setView("unauthorized"); return; }
+        setView("process");
+        loadRequest();
+        return;
       }
 
+      // For request/initial pages, show request view immediately (with loading subtitle),
+      // then loadEquipment will switch to correct view.
+      setView("request");
+      if (eqPrefill && requestSubtitle) requestSubtitle.textContent = "Checking equipment status...";
+      if (submitBtn) submitBtn.disabled = true;
+
+      // Wire up tab clicks (all no-op for safety)
       tabRequest.addEventListener("click", () => {});
-      tabProcess.addEventListener("click", () => {
-        // Intentionally no-op; process page is entry by email link only.
-      });
-      tabInitial.addEventListener("click", () => {
-        // Intentionally no-op; use explicit actions instead.
-      });
+      tabProcess.addEventListener("click", () => {});
+      tabInitial.addEventListener("click", () => {});
+
       if (registerInitialBtn) {
         registerInitialBtn.addEventListener("click", () => {
-          const canInitial = currentRole === "INITIAL_SEAL" || currentRole === "ADMIN";
-          if (!canInitial) {
-            showToast("Not authorized");
-            return;
-          }
+          if (currentRole !== "INITIAL_SEAL" && currentRole !== "ADMIN") { showToast("Not authorized"); return; }
           setView("initial");
         });
       }
@@ -982,56 +695,19 @@ window.__APP_VERSION__ = "20260414_no_boot_route";
         contactOwnerBtn.addEventListener("click", () => {
           const eq = getParam("eq");
           if (contactMailto) {
-            const subject = encodeURIComponent("Initial Seal registration needed");
-            const body = encodeURIComponent(`Please register initial seal for equipment: ${eq}`);
-            contactMailto.setAttribute("href", `mailto:?subject=${subject}&body=${body}`);
+            contactMailto.setAttribute("href", "mailto:?subject=" + encodeURIComponent("Initial Seal registration needed") + "&body=" + encodeURIComponent("Please register initial seal for equipment: " + eq));
           }
           contactModal.classList.remove("hidden");
         });
       }
-      if (closeContactBtn && contactModal) {
-        closeContactBtn.addEventListener("click", () => contactModal.classList.add("hidden"));
-      }
-      if (contactMailto && contactModal) {
-        contactMailto.addEventListener("click", () => contactModal.classList.add("hidden"));
-      }
-      if (refreshUnregBtn) {
-        refreshUnregBtn.addEventListener("click", () => loadEquipment());
-      }
-      if (backRequestBtn) {
-        backRequestBtn.addEventListener("click", () => setView("request"));
-      }
-      if (backHomeBtnDup) {
-        backHomeBtnDup.addEventListener("click", () => {});
-      }
-      if (backHomeUnauthorizedBtn) {
-        backHomeUnauthorizedBtn.addEventListener("click", () => {});
-      }
-      if (backHomeProcessedBtn) {
-        backHomeProcessedBtn.addEventListener("click", () => {});
-      }
+      if (closeContactBtn && contactModal) closeContactBtn.addEventListener("click", () => contactModal.classList.add("hidden"));
+      if (contactMailto && contactModal) contactMailto.addEventListener("click", () => contactModal.classList.add("hidden"));
+      if (refreshUnregBtn) refreshUnregBtn.addEventListener("click", () => loadEquipment());
+      if (scanAnotherBtn) scanAnotherBtn.addEventListener("click", () => showToast("Scan another unit QR to begin."));
+      if (viewSealBtn) viewSealBtn.addEventListener("click", () => { setView("request"); loadEquipment(); });
+
       const versionEl = document.getElementById("appVersion");
-      if (versionEl && window.__APP_VERSION__) {
-        versionEl.textContent = window.__APP_VERSION__;
-      }
-      if (scanAnotherBtn) {
-        scanAnotherBtn.addEventListener("click", () => showToast("Scan another unit QR to begin."));
-      }
-      if (viewSealBtn) {
-        viewSealBtn.addEventListener("click", () => {
-          setView("request");
-          loadEquipment();
-        });
-      }
-      if (backHomeBtn) {
-        backHomeBtn.addEventListener("click", () => {});
-      }
-      if (downloadSummaryBtn) {
-        downloadSummaryBtn.addEventListener("click", () => {});
-      }
-      if (closeFinalizeBtn) {
-        closeFinalizeBtn.addEventListener("click", () => {});
-      }
+      if (versionEl && window.__APP_VERSION__) versionEl.textContent = window.__APP_VERSION__;
 
       loadEquipment();
       updateSealAppliedView();
@@ -1040,15 +716,8 @@ window.__APP_VERSION__ = "20260414_no_boot_route";
       showFriendlyError(err);
       revealMainTabs();
       setView("request");
+      if (requestSubtitle) requestSubtitle.textContent = "Failed to load user context. Please refresh.";
     }).getUserContext();
-
-    if (getParam("debugUi") === "1") {
-      renderProcessDebug({
-        pageParams: PAGE_PARAMS,
-        urlSearch: window.location.search,
-        appVersion: window.__APP_VERSION__ || ""
-      });
-    }
   }
 
   if (document.readyState === "loading") {
