@@ -249,6 +249,17 @@ window.__APP_VERSION__ = "20260415_processor_queue";
     if (mc) mc.classList.add("queue-wide");
     const bt = document.getElementById("brandTitle");
     if (bt) bt.textContent = "Request Queue Lists";
+    const pageTitle = document.querySelector(".queue-page-title");
+    if (pageTitle) pageTitle.textContent = "Request Queue Lists";
+    const legacyIcon = document.getElementById("queueBrandIcon");
+    if (legacyIcon && legacyIcon.parentNode) legacyIcon.parentNode.removeChild(legacyIcon);
+    const logo = document.getElementById("brandLogoImg");
+    if (logo) {
+      logo.src = "https://raw.githubusercontent.com/DurraniHakim27/tamper-seal-assets/main/bluebulb-removebg-preview.png";
+      logo.style.display = "inline-block";
+      logo.style.visibility = "visible";
+      logo.style.opacity = "1";
+    }
     const topRef = document.getElementById("queueTopRefreshBtn");
     if (topRef) topRef.classList.remove("hidden");
   }
@@ -261,6 +272,10 @@ window.__APP_VERSION__ = "20260415_processor_queue";
     if (mc) mc.classList.remove("queue-wide");
     const bt = document.getElementById("brandTitle");
     if (bt) bt.textContent = "Tamper Seal Log";
+    const pageTitle = document.querySelector(".queue-page-title");
+    if (pageTitle && pageTitle.textContent !== "Request Queue Lists") {
+      pageTitle.textContent = "Request Queue Lists";
+    }
     const topRef = document.getElementById("queueTopRefreshBtn");
     if (topRef) topRef.classList.add("hidden");
   }
