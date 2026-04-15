@@ -1,5 +1,5 @@
 window.__APP_JS_LOADED = true;
-window.__APP_VERSION__ = "20260414_no_popups";
+window.__APP_VERSION__ = "20260415_processor_queue";
 (function () {
   const seed = "#1D3B6E";
   const mcu = window.materialColorUtilities;
@@ -95,7 +95,8 @@ window.__APP_VERSION__ = "20260414_no_popups";
     alreadyProcessed: document.getElementById("alreadyProcessedView"),
     initialSuccess: document.getElementById("initialSuccessView"),
     requestSuccess: document.getElementById("requestSuccessView"),
-    finalizeSuccess: document.getElementById("finalizeSuccessView")
+    finalizeSuccess: document.getElementById("finalizeSuccessView"),
+    queue: document.getElementById("queueView")
   };
 
   const mainTabs = document.getElementById("mainTabs");
@@ -200,21 +201,69 @@ window.__APP_VERSION__ = "20260414_no_popups";
     return (PAGE_PARAMS && PAGE_PARAMS[key]) ? PAGE_PARAMS[key] : (urlParams.get(key) || "");
   }
 
+  function truncateEmail(email) {
+    const e = String(email || "");
+    if (e.length <= 32) return e;
+    const at = e.indexOf("@");
+    if (at === -1) return e.slice(0, 28) + "…";
+    const local = e.slice(0, at);
+    const domain = e.slice(at + 1);
+    const left = local.length > 18 ? local.slice(0, 16) + "…" : local;
+    const dom = domain.length > 14 ? domain.slice(0, 12) + "…" : domain;
+    return left + "@" + dom;
+  }
+
+  // ==================== QUEUE CHROME (Processor Queue page) ====================
+  function enterQueueChrome() {
+    document.body.classList.add("queue-page-bg");
+    const shell = document.querySelector(".app-shell");
+    if (shell) shell.classList.add("queue-mode");
+    const mc = document.getElementById("mainContainer");
+    if (mc) mc.classList.add("queue-wide");
+    const bt = document.getElementById("brandTitle");
+    if (bt) bt.textContent = "Processor Queue";
+    const icon = document.getElementById("queueBrandIcon");
+    if (icon) icon.classList.remove("hidden");
+    const topRef = document.getElementById("queueTopRefreshBtn");
+    if (topRef) topRef.classList.remove("hidden");
+  }
+
+  function exitQueueChrome() {
+    document.body.classList.remove("queue-page-bg");
+    const shell = document.querySelector(".app-shell");
+    if (shell) shell.classList.remove("queue-mode");
+    const mc = document.getElementById("mainContainer");
+    if (mc) mc.classList.remove("queue-wide");
+    const bt = document.getElementById("brandTitle");
+    if (bt) bt.textContent = "Tamper Seal Log";
+    const icon = document.getElementById("queueBrandIcon");
+    if (icon) icon.classList.add("hidden");
+    const topRef = document.getElementById("queueTopRefreshBtn");
+    if (topRef) topRef.classList.add("hidden");
+  }
+
   // ==================== VIEW SWITCHING ====================
   function setView(view) {
     console.log("[setView]", view);
+    if (view !== "queue") exitQueueChrome();
     Object.values(viewMap).forEach(v => { if (v) v.classList.add("hidden"); });
     const target = viewMap[view] || viewMap.request;
     if (target) target.classList.remove("hidden");
     if (mainTabs) {
-      if (view === "request" || view === "requestSuccess") mainTabs.activeTabIndex = 0;
-      if (view === "process" || view === "finalizeSuccess") mainTabs.activeTabIndex = 1;
-      if (view === "initial" || view === "initialSuccess") mainTabs.activeTabIndex = 2;
-      if (view === "unregistered") {
-        const r = currentRole || "";
-        mainTabs.activeTabIndex = (r === "INITIAL_SEAL" || r === "ADMIN") ? 2 : 0;
+      if (view === "queue") {
+        mainTabs.style.display = "none";
+      } else {
+        mainTabs.style.display = "";
+        if (view === "request" || view === "requestSuccess") mainTabs.activeTabIndex = 0;
+        if (view === "process" || view === "finalizeSuccess") mainTabs.activeTabIndex = 1;
+        if (view === "initial" || view === "initialSuccess") mainTabs.activeTabIndex = 2;
+        if (view === "unregistered") {
+          const r = currentRole || "";
+          mainTabs.activeTabIndex = (r === "INITIAL_SEAL" || r === "ADMIN") ? 2 : 0;
+        }
       }
     }
+    if (view === "queue") enterQueueChrome();
   }
 
   function showInProgress(equipmentId, message, meta) {
@@ -666,6 +715,290 @@ window.__APP_VERSION__ = "20260414_no_popups";
     }
   }
 
+  // ==================== PROCESSOR QUEUE ====================
+  const QUEUE_PAGE_SIZE = 8;
+  let queueListenersBound = false;
+  let queueState = {
+    bucket: "pending",
+    search: "",
+    page: 0,
+    rows: { pending: [], finalized: [], cancelled: [] },
+    counts: { pending: 0, finalized: 0, cancelled: 0 }
+  };
+
+  function queueFormatSubmitted(isoStr) {
+    const t = Date.parse(isoStr);
+    if (isNaN(t)) return { line: isoStr ? String(isoStr) : "—" };
+    const now = Date.now();
+    const diffMs = Math.max(0, now - t);
+    const mins = Math.floor(diffMs / 60000);
+    const hours = Math.floor(mins / 60);
+    const days = Math.floor(hours / 24);
+    let age = "";
+    if (days >= 1) age = "(" + days + (days === 1 ? " day" : " days") + ")";
+    else if (hours >= 1) age = "(" + hours + (hours === 1 ? " hour" : " hours") + ")";
+    else if (mins >= 1) age = "(" + mins + " min)";
+    else age = "(just now)";
+
+    const d = new Date(t);
+    const today = new Date();
+    const isSameDay = d.toDateString() === today.toDateString();
+    const yest = new Date(today);
+    yest.setDate(yest.getDate() - 1);
+    const isYest = d.toDateString() === yest.toDateString();
+    const timePart = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    let label = "";
+    if (isSameDay) label = "Today, " + timePart;
+    else if (isYest) label = "Yesterday, " + timePart;
+    else {
+      const opts = { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" };
+      if (d.getFullYear() !== today.getFullYear()) opts.year = "numeric";
+      label = d.toLocaleString([], opts);
+    }
+    return { line: label + " " + age };
+  }
+
+  function queueStatusBadgeClass(status) {
+    const s = String(status || "").toUpperCase();
+    if (s === "FINALIZED") return "queue-badge--finalized";
+    if (s === "CANCELLED" || s === "REJECTED") return "queue-badge--cancelled";
+    return "queue-badge--pending";
+  }
+
+  function queueStatusLabel(status) {
+    const s = String(status || "").toUpperCase();
+    if (s === "FINALIZED") return "Finalized";
+    if (s === "CANCELLED" || s === "REJECTED") return "Cancelled";
+    return "Pending";
+  }
+
+  function queueRowMatchesSearch(row, q) {
+    if (!q) return true;
+    const s = q.toLowerCase().trim();
+    const reqer = (row.name + " / " + row.company).toLowerCase();
+    return (
+      String(row.requestId || "").toLowerCase().includes(s) ||
+      String(row.equipmentId || "").toLowerCase().includes(s) ||
+      String(row.reason || "").toLowerCase().includes(s) ||
+      reqer.includes(s) ||
+      String(row.name || "").toLowerCase().includes(s) ||
+      String(row.company || "").toLowerCase().includes(s)
+    );
+  }
+
+  function queueFilteredList() {
+    const list = queueState.rows[queueState.bucket] || [];
+    return list.filter(r => queueRowMatchesSearch(r, queueState.search));
+  }
+
+  function queueNavigateToProcess(requestId) {
+    const u = new URL(window.location.href);
+    u.search = "";
+    u.searchParams.set("page", "process");
+    u.searchParams.set("rid", requestId);
+    (window.top || window).location.href = u.toString();
+  }
+
+  function queueRenderTable() {
+    const tbody = document.getElementById("queueTableBody");
+    const table = document.getElementById("queueTable");
+    const emptyEl = document.getElementById("queueEmptyState");
+    if (!tbody || !table || !emptyEl) return;
+
+    const filtered = queueFilteredList();
+    const total = filtered.length;
+    const pages = Math.max(1, Math.ceil(total / QUEUE_PAGE_SIZE) || 1);
+    if (queueState.page >= pages) queueState.page = Math.max(0, pages - 1);
+    const start = queueState.page * QUEUE_PAGE_SIZE;
+    const slice = filtered.slice(start, start + QUEUE_PAGE_SIZE);
+
+    tbody.innerHTML = "";
+    if (!slice.length) {
+      table.classList.add("hidden");
+      emptyEl.classList.remove("hidden");
+    } else {
+      table.classList.remove("hidden");
+      emptyEl.classList.add("hidden");
+    }
+
+    slice.forEach((row, idx) => {
+      const tr = document.createElement("tr");
+      if (queueState.bucket === "pending" && queueState.page === 0 && idx === 0) {
+        tr.className = "queue-row--accent";
+      }
+      const submitted = queueFormatSubmitted(row.createdAt);
+      const badgeClass = queueStatusBadgeClass(row.status);
+      const badgeIcon = queueState.bucket === "pending" ? "schedule" : (queueState.bucket === "finalized" ? "check_circle" : "block");
+      const requester = (row.name || "—") + " / " + (row.company || "—");
+
+      const td0 = document.createElement("td");
+      const ridSpan = document.createElement("span");
+      ridSpan.className = "queue-cell-mono";
+      ridSpan.textContent = row.requestId || "";
+      td0.appendChild(ridSpan);
+
+      const td1 = document.createElement("td");
+      const eqSpan = document.createElement("span");
+      eqSpan.className = "queue-cell-eq";
+      eqSpan.textContent = row.equipmentId || "";
+      td1.appendChild(eqSpan);
+
+      const td2 = document.createElement("td");
+      td2.textContent = submitted.line;
+
+      const td3 = document.createElement("td");
+      td3.textContent = row.reason || "—";
+
+      const td4 = document.createElement("td");
+      td4.textContent = requester;
+
+      const td5 = document.createElement("td");
+      const badge = document.createElement("span");
+      badge.className = "queue-badge-status " + badgeClass;
+      const ic = document.createElement("span");
+      ic.className = "material-symbols-outlined";
+      ic.setAttribute("aria-hidden", "true");
+      ic.textContent = badgeIcon;
+      const bt = document.createElement("span");
+      bt.textContent = queueStatusLabel(row.status);
+      badge.appendChild(ic);
+      badge.appendChild(bt);
+      td5.appendChild(badge);
+
+      const td6 = document.createElement("td");
+      td6.style.textAlign = "right";
+      const openBtn = document.createElement("button");
+      openBtn.type = "button";
+      openBtn.className = "queue-open-btn";
+      openBtn.textContent = "Open";
+      openBtn.addEventListener("click", () => queueNavigateToProcess(row.requestId));
+      td6.appendChild(openBtn);
+
+      tr.appendChild(td0);
+      tr.appendChild(td1);
+      tr.appendChild(td2);
+      tr.appendChild(td3);
+      tr.appendChild(td4);
+      tr.appendChild(td5);
+      tr.appendChild(td6);
+      tbody.appendChild(tr);
+    });
+
+    const badgeP = document.getElementById("queueBadgePending");
+    const badgeF = document.getElementById("queueBadgeFinalized");
+    const badgeC = document.getElementById("queueBadgeCancelled");
+    if (badgeP) badgeP.textContent = String(queueState.counts.pending);
+    if (badgeF) badgeF.textContent = String(queueState.counts.finalized);
+    if (badgeC) badgeC.textContent = String(queueState.counts.cancelled);
+
+    const bucketLabel = queueState.bucket === "pending" ? "pending" : (queueState.bucket === "finalized" ? "finalized" : "cancelled");
+    const summary = document.getElementById("queueFooterSummary");
+    if (summary) {
+      if (queueState.search.trim()) {
+        summary.textContent = "Showing " + slice.length + " of " + total + " filtered " + bucketLabel + " requests (page " + (queueState.page + 1) + " of " + pages + ")";
+      } else {
+        summary.textContent = "Showing " + slice.length + " of " + total + " " + bucketLabel + " requests";
+      }
+    }
+
+    const prev = document.getElementById("queuePagePrev");
+    const next = document.getElementById("queuePageNext");
+    if (prev) prev.disabled = queueState.page <= 0;
+    if (next) next.disabled = queueState.page >= pages - 1;
+  }
+
+  function queueSetTab(bucket) {
+    queueState.bucket = bucket;
+    queueState.page = 0;
+    ["queueTabPending", "queueTabFinalized", "queueTabCancelled"].forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const b = ["pending", "finalized", "cancelled"][i];
+      const active = b === bucket;
+      el.classList.toggle("queue-tab--active", active);
+      el.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    queueRenderTable();
+  }
+
+  function queueUpdateSyncText() {
+    const el = document.getElementById("queueSyncText");
+    if (!el) return;
+    const t = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    el.textContent = "Updated at " + t;
+  }
+
+  function loadQueueData() {
+    if (!(google && google.script && google.script.run)) {
+      showToast("Cannot load queue (offline)");
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(jsonStr => {
+        try {
+          const data = typeof jsonStr === "string" ? JSON.parse(jsonStr) : jsonStr;
+          if (!data || !data.ok) {
+            showToast((data && data._error) || "Failed to load queue");
+            queueState.rows = { pending: [], finalized: [], cancelled: [] };
+            queueState.counts = { pending: 0, finalized: 0, cancelled: 0 };
+            queueRenderTable();
+            return;
+          }
+          queueState.rows = data.rows || { pending: [], finalized: [], cancelled: [] };
+          queueState.counts = data.counts || { pending: 0, finalized: 0, cancelled: 0 };
+          queueUpdateSyncText();
+          queueRenderTable();
+        } catch (e) {
+          showToast("Queue data error");
+          console.error(e);
+        }
+      })
+      .withFailureHandler(err => {
+        showFriendlyError(err);
+        queueState.rows = { pending: [], finalized: [], cancelled: [] };
+        queueState.counts = { pending: 0, finalized: 0, cancelled: 0 };
+        queueRenderTable();
+      })
+      .getProcessorQueueJson();
+  }
+
+  function initProcessorQueuePage() {
+    const search = document.getElementById("queueSearchInput");
+    if (search) {
+      search.value = "";
+      queueState.search = "";
+      queueState.page = 0;
+      queueState.bucket = "pending";
+    }
+
+    if (!queueListenersBound) {
+      queueListenersBound = true;
+      if (search) {
+        search.addEventListener("input", () => {
+          queueState.search = search.value;
+          queueState.page = 0;
+          queueRenderTable();
+        });
+      }
+      document.getElementById("queueTabPending")?.addEventListener("click", () => queueSetTab("pending"));
+      document.getElementById("queueTabFinalized")?.addEventListener("click", () => queueSetTab("finalized"));
+      document.getElementById("queueTabCancelled")?.addEventListener("click", () => queueSetTab("cancelled"));
+      document.getElementById("queueRefreshBtn")?.addEventListener("click", () => loadQueueData());
+      document.getElementById("queueTopRefreshBtn")?.addEventListener("click", () => loadQueueData());
+      document.getElementById("queuePagePrev")?.addEventListener("click", () => {
+        if (queueState.page > 0) { queueState.page--; queueRenderTable(); }
+      });
+      document.getElementById("queuePageNext")?.addEventListener("click", () => {
+        const filtered = queueFilteredList();
+        const pages = Math.max(1, Math.ceil(filtered.length / QUEUE_PAGE_SIZE));
+        if (queueState.page < pages - 1) { queueState.page++; queueRenderTable(); }
+      });
+    }
+
+    queueSetTab("pending");
+    loadQueueData();
+  }
+
   // ==================== INIT ====================
   function init() {
     const eqPrefill = getParam("eq");
@@ -681,11 +1014,27 @@ window.__APP_VERSION__ = "20260414_no_popups";
     google.script.run.withSuccessHandler(ctx => {
       currentRole = ctx.role;
       currentEmail = ctx.email || "";
-      console.log("[init] role=" + ctx.role + " email=" + ctx.email);
-      userChip.setAttribute("label", ctx.email);
+      const page = getParam("page") || "request";
+      console.log("[init] role=" + ctx.role + " email=" + ctx.email + " page=" + page);
+      userChip.setAttribute("label", truncateEmail(ctx.email));
+      if (userChip) userChip.title = ctx.email || "";
       setRequesterEmail(ctx.email);
 
-      const page = getParam("page") || "request";
+      if (page === "queue") {
+        revealMainTabs();
+        if (ctx.role !== "PROCESSOR" && ctx.role !== "ADMIN") {
+          mainTabs.style.display = "";
+          setTabsForRole(ctx.role, "request", { equipmentUnregistered: !!eqPrefill });
+          setView("unauthorized");
+          return;
+        }
+        mainTabs.style.display = "none";
+        setTabsForRole(ctx.role, "queue", { equipmentUnregistered: false });
+        setView("queue");
+        initProcessorQueuePage();
+        return;
+      }
+
       setTabsForRole(ctx.role, page, { equipmentUnregistered: !!eqPrefill });
       revealMainTabs();
 
