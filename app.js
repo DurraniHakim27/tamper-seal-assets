@@ -818,15 +818,30 @@ window.__APP_VERSION__ = "20260415_processor_queue";
     return list.filter(r => queueRowMatchesSearch(r, queueState.search));
   }
 
-  function queueNavigateToProcess(requestId) {
+  function queueNavigateToProcess(rowOrRequestId) {
+    const requestId = (rowOrRequestId && typeof rowOrRequestId === "object")
+      ? String(rowOrRequestId.requestId || "").trim()
+      : String(rowOrRequestId || "").trim();
+    const rowUrl = (rowOrRequestId && typeof rowOrRequestId === "object")
+      ? String(rowOrRequestId.processUrl || "").trim()
+      : "";
     const explicitBase = resolveWebAppBaseUrl();
-    const safeRequestId = encodeURIComponent(String(requestId || "").trim());
-    const target = explicitBase
+    const safeRequestId = encodeURIComponent(requestId);
+    const target = rowUrl || (explicitBase
       ? (explicitBase + "?page=process&rid=" + safeRequestId)
-      : (new URL(window.location.href).origin + new URL(window.location.href).pathname + "?page=process&rid=" + safeRequestId);
+      : (new URL(window.location.href).origin + new URL(window.location.href).pathname + "?page=process&rid=" + safeRequestId));
     console.log("[queue] open process target:", target);
 
-    // In Apps Script iframe/panel contexts, forcing top-level navigation avoids white panel loads.
+    // Apps Script panel/iframe can white-screen with in-frame navigation.
+    // Opening a real top-level tab is the most reliable path.
+    try {
+      const opened = window.open(target, "_blank", "noopener,noreferrer");
+      if (opened) return;
+    } catch (e) {
+      console.warn("[queue] window.open failed, trying _top navigation", e);
+    }
+
+    // Fallback: force top-level navigation in same tab.
     try {
       const a = document.createElement("a");
       a.href = target;
@@ -920,7 +935,7 @@ window.__APP_VERSION__ = "20260415_processor_queue";
       openBtn.type = "button";
       openBtn.className = "queue-open-btn";
       openBtn.textContent = "Open";
-      openBtn.addEventListener("click", () => queueNavigateToProcess(row.requestId));
+      openBtn.addEventListener("click", () => queueNavigateToProcess(row));
       td6.appendChild(openBtn);
 
       tr.appendChild(td0);
