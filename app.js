@@ -213,6 +213,33 @@ window.__APP_VERSION__ = "20260415_processor_queue";
     return left + "@" + dom;
   }
 
+  function getPageParams() {
+    if (window.PAGE_PARAMS && typeof window.PAGE_PARAMS === "object") return window.PAGE_PARAMS;
+    if (typeof PAGE_PARAMS !== "undefined" && PAGE_PARAMS && typeof PAGE_PARAMS === "object") return PAGE_PARAMS;
+    return {};
+  }
+
+  function resolveWebAppBaseUrl() {
+    const p = getPageParams();
+    const explicit = String((p && p.webAppUrl) || "").trim();
+    if (explicit) return explicit;
+
+    try {
+      const here = new URL(window.location.href);
+      if (/\/macros\/s\/[^/]+\/exec$/.test(here.pathname)) {
+        return here.origin + here.pathname;
+      }
+    } catch (e) { /* ignore */ }
+
+    try {
+      const ref = new URL(document.referrer || "");
+      if (/\/macros\/s\/[^/]+\/exec$/.test(ref.pathname)) {
+        return ref.origin + ref.pathname;
+      }
+    } catch (e) { /* ignore */ }
+    return "";
+  }
+
   // ==================== QUEUE CHROME (Processor Queue page) ====================
   function enterQueueChrome() {
     document.body.classList.add("queue-page-bg");
@@ -792,17 +819,33 @@ window.__APP_VERSION__ = "20260415_processor_queue";
   }
 
   function queueNavigateToProcess(requestId) {
-    const explicitBase = PAGE_PARAMS && PAGE_PARAMS.webAppUrl ? String(PAGE_PARAMS.webAppUrl).trim() : "";
+    const explicitBase = resolveWebAppBaseUrl();
     const safeRequestId = encodeURIComponent(String(requestId || "").trim());
-    if (explicitBase) {
-      window.location.assign(explicitBase + "?page=process&rid=" + safeRequestId);
+    const target = explicitBase
+      ? (explicitBase + "?page=process&rid=" + safeRequestId)
+      : (new URL(window.location.href).origin + new URL(window.location.href).pathname + "?page=process&rid=" + safeRequestId);
+    console.log("[queue] open process target:", target);
+
+    // In Apps Script iframe/panel contexts, forcing top-level navigation avoids white panel loads.
+    try {
+      const a = document.createElement("a");
+      a.href = target;
+      a.target = "_top";
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
       return;
+    } catch (e) {
+      console.warn("[queue] _top link navigation failed, fallback to location.assign", e);
     }
-    const u = new URL(window.location.href);
-    u.search = "";
-    u.searchParams.set("page", "process");
-    u.searchParams.set("rid", String(requestId || ""));
-    window.location.assign(u.toString());
+
+    try {
+      window.top.location.href = target;
+      return;
+    } catch (e) { /* ignore cross-origin */ }
+
+    window.location.assign(target);
   }
 
   function queueRenderTable() {
