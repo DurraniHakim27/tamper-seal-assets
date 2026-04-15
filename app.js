@@ -249,8 +249,6 @@ window.__APP_VERSION__ = "20260415_processor_queue";
     if (mc) mc.classList.add("queue-wide");
     const bt = document.getElementById("brandTitle");
     if (bt) bt.textContent = "Processor Queue";
-    const icon = document.getElementById("queueBrandIcon");
-    if (icon) icon.classList.remove("hidden");
     const topRef = document.getElementById("queueTopRefreshBtn");
     if (topRef) topRef.classList.remove("hidden");
   }
@@ -263,8 +261,6 @@ window.__APP_VERSION__ = "20260415_processor_queue";
     if (mc) mc.classList.remove("queue-wide");
     const bt = document.getElementById("brandTitle");
     if (bt) bt.textContent = "Tamper Seal Log";
-    const icon = document.getElementById("queueBrandIcon");
-    if (icon) icon.classList.add("hidden");
     const topRef = document.getElementById("queueTopRefreshBtn");
     if (topRef) topRef.classList.add("hidden");
   }
