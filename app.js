@@ -240,7 +240,7 @@ window.__APP_VERSION__ = "20260415_processor_queue";
     return "";
   }
 
-  // ==================== QUEUE CHROME (Processor Queue page) ====================
+  // ==================== QUEUE CHROME (Request Queue Lists page) ====================
   function enterQueueChrome() {
     document.body.classList.add("queue-page-bg");
     const shell = document.querySelector(".app-shell");
@@ -248,7 +248,7 @@ window.__APP_VERSION__ = "20260415_processor_queue";
     const mc = document.getElementById("mainContainer");
     if (mc) mc.classList.add("queue-wide");
     const bt = document.getElementById("brandTitle");
-    if (bt) bt.textContent = "Processor Queue";
+    if (bt) bt.textContent = "Request Queue Lists";
     const topRef = document.getElementById("queueTopRefreshBtn");
     if (topRef) topRef.classList.remove("hidden");
   }
