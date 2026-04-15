@@ -792,11 +792,17 @@ window.__APP_VERSION__ = "20260415_processor_queue";
   }
 
   function queueNavigateToProcess(requestId) {
+    const explicitBase = PAGE_PARAMS && PAGE_PARAMS.webAppUrl ? String(PAGE_PARAMS.webAppUrl).trim() : "";
+    const safeRequestId = encodeURIComponent(String(requestId || "").trim());
+    if (explicitBase) {
+      window.location.assign(explicitBase + "?page=process&rid=" + safeRequestId);
+      return;
+    }
     const u = new URL(window.location.href);
     u.search = "";
     u.searchParams.set("page", "process");
-    u.searchParams.set("rid", requestId);
-    (window.top || window).location.href = u.toString();
+    u.searchParams.set("rid", String(requestId || ""));
+    window.location.assign(u.toString());
   }
 
   function queueRenderTable() {
