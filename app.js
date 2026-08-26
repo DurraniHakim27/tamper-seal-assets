@@ -322,10 +322,12 @@
     );
   }
 
-  function revealMainTabs() {
-    if (mainTabs) mainTabs.style.visibility = "";
-  }
+function revealMainTabs() {
+  if (!mainTabs) return;
 
+  mainTabs.classList.remove("hidden");
+  mainTabs.style.visibility = "";
+}
   function setBusy(button, busy, busyLabel) {
     if (!button) return;
 
