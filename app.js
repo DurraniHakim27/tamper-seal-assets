@@ -963,7 +963,6 @@ function updateReplacementView() {
 
   if (mappingSection) {
     mappingSection.classList.toggle("hidden", !showReplacement);
-    mappingSection.classList.toggle("active", showReplacement);
   }
 
   if (dateInitialsRow) {
