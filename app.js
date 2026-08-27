@@ -43,7 +43,7 @@
   }
   window.__TAMPER_SEAL_APP_INITIALIZED__ = true;
   window.__APP_JS_LOADED = true;
-  window.__APP_VERSION__ = "20260826_v2_seal_level";
+  window.__APP_VERSION__ = "20260827_v2_1_partial_processing";
 
   const PAGE_PARAMS = window.PAGE_PARAMS || {};
   const urlParams = new URLSearchParams(window.location.search || "");
@@ -151,11 +151,8 @@
   const processSeals = $("processSeals");
   const mappingList = $("mappingList");
   const removalDate = $("removalDate");
-  const dateInitialsField = $("dateInitialsField");
   const processRemarks = $("processRemarks");
-  const newSealSeg = $("newSealSeg");
   const mappingSection = $("mappingSection");
-  const dateInitialsRow = $("dateInitialsRow");
   const replacementDecisionHint = $("replacementDecisionHint");
   const finalizeBtn = $("finalizeBtn");
   const cancelBtn = $("cancelBtn");
@@ -1528,23 +1525,7 @@ function renderProcessSummary(req) {
     });
   }
 
-  // Hide the old global Yes/No controls.
-  if (newSealSeg) {
-    const block =
-      newSealSeg.closest(
-        ".replacement-decision-block"
-      );
 
-    if (block) {
-      block.style.display = "none";
-    }
-  }
-
-  if (dateInitialsRow) {
-    dateInitialsRow.classList.add(
-      "hidden"
-    );
-  }
 
   if (replacementDecisionHint) {
     replacementDecisionHint.textContent =
@@ -1628,14 +1609,18 @@ function renderProcessSummary(req) {
               item.newSealId
             : " → No replacement";
 
-        detail.textContent =
-          replacementText +
-          (
-            item.removalDate
-              ? " • " +
-                item.removalDate
-              : ""
-          );
+detail.textContent =
+  replacementText +
+  (
+    item.removalDate
+      ? " • " + item.removalDate
+      : ""
+  ) +
+  (
+    item.actionedBy
+      ? " • " + item.actionedBy
+      : ""
+  );
 
         statusLine.appendChild(
           title
@@ -2536,21 +2521,46 @@ async function finalizeAction() {
     return "queue-badge--pending";
   }
 
-  function queueStatusLabel(status) {
-    const s = String(status || "").trim().toUpperCase();
-    return s || "PENDING";
+function queueStatusLabel(row) {
+  const status =
+    String(
+      row && row.status || ""
+    )
+      .trim()
+      .toUpperCase() ||
+    "PENDING";
+
+  const progress =
+    String(
+      row && row.progressText || ""
+    ).trim();
+
+  if (
+    status === "PARTIAL" &&
+    progress
+  ) {
+    return (
+      "PARTIAL • " +
+      progress
+    );
   }
+
+  return status;
+}
 
   function queueRowMatchesSearch(row, query) {
     if (!query) return true;
-    const haystack = [
-      row.requestId,
-      row.equipmentId,
-      row.reason,
-      row.name,
-      row.company,
-      row.status
-    ].join(" ").toLowerCase();
+const haystack = [
+  row.requestId,
+  row.equipmentId,
+  row.reason,
+  row.name,
+  row.company,
+  row.status,
+  row.progressText
+]
+  .join(" ")
+  .toLowerCase();
     return haystack.includes(query.toLowerCase());
   }
 
@@ -2620,7 +2630,8 @@ async function finalizeAction() {
       const tdStatus = document.createElement("td");
       const badge = document.createElement("span");
       badge.className = "queue-badge-status " + queueStatusBadgeClass(row.status);
-      badge.textContent = queueStatusLabel(row.status);
+      badge.textContent =
+  queueStatusLabel(row);
       tdStatus.appendChild(badge);
 
       const tdAction = document.createElement("td");
@@ -2843,23 +2854,20 @@ async function finalizeAction() {
       if (currentEquipmentData) enterAddSealMode(currentEquipmentData);
     });
 
-    // Processor Yes / No decision
-    if (newSealSeg) {
-      newSealSeg.querySelectorAll(".segmented-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-          newSealSeg.querySelectorAll(".segmented-btn").forEach(other => {
-            other.setAttribute("aria-pressed", "false");
-          });
-          btn.setAttribute("aria-pressed", "true");
-          updateReplacementView();
-        });
-      });
-    }
+  // Processor batch fields
+[removalDate, processRemarks]
+  .filter(Boolean)
+  .forEach(field => {
+    field.addEventListener(
+      "input",
+      updateFinalizeButtonState
+    );
 
-    [removalDate, dateInitialsField, processRemarks].filter(Boolean).forEach(field => {
-      field.addEventListener("input", updateFinalizeButtonState);
-      field.addEventListener("change", updateFinalizeButtonState);
-    });
+    field.addEventListener(
+      "change",
+      updateFinalizeButtonState
+    );
+  });
 
     finalizeBtn?.addEventListener("click", finalizeAction);
     cancelBtn?.addEventListener("click", cancelAction);
