@@ -957,38 +957,48 @@ function revealMainTabs() {
     updateReplacementView();
   }
 
-  function updateReplacementView() {
-    const decision = getReplacementDecision();
-    const showReplacement = decision === "Yes";
+function updateReplacementView() {
+  const decision = getReplacementDecision();
+  const showReplacement = decision === "Yes";
 
-    if (mappingSection) mappingSection.classList.toggle("hidden", !showReplacement);
-    if (dateInitialsRow) dateInitialsRow.classList.toggle("hidden", !showReplacement);
-
-    if (mappingList) {
-      mappingList.querySelectorAll(".mapping-field").forEach(field => {
-        field.disabled = !showReplacement;
-      });
-    }
-
-    if (dateInitialsField) dateInitialsField.disabled = !showReplacement;
-
-    if (decision === "No") {
-      // Critical integrity rule: No must not retain replacement data.
-      clearReplacementFields();
-    }
-
-    if (replacementDecisionHint) {
-      if (!decision) {
-        replacementDecisionHint.textContent = "Select Yes or No before finalizing.";
-      } else if (decision === "Yes") {
-        replacementDecisionHint.textContent = "Enter one replacement seal ID for every removed seal.";
-      } else {
-        replacementDecisionHint.textContent = "No replacement seal will be recorded.";
-      }
-    }
-
-    updateFinalizeButtonState();
+  if (mappingSection) {
+    mappingSection.classList.toggle("hidden", !showReplacement);
+    mappingSection.classList.toggle("active", showReplacement);
   }
+
+  if (dateInitialsRow) {
+    dateInitialsRow.classList.toggle("hidden", !showReplacement);
+  }
+
+  if (mappingList) {
+    mappingList.querySelectorAll(".mapping-field").forEach(field => {
+      field.disabled = !showReplacement;
+    });
+  }
+
+  if (dateInitialsField) {
+    dateInitialsField.disabled = !showReplacement;
+  }
+
+  if (decision === "No") {
+    clearReplacementFields();
+  }
+
+  if (replacementDecisionHint) {
+    if (!decision) {
+      replacementDecisionHint.textContent =
+        "Select Yes or No before finalizing.";
+    } else if (decision === "Yes") {
+      replacementDecisionHint.textContent =
+        "Enter one replacement seal ID for every removed seal.";
+    } else {
+      replacementDecisionHint.textContent =
+        "No replacement seal will be recorded.";
+    }
+  }
+
+  updateFinalizeButtonState();
+}
 
   function collectReplacementMapping() {
     const mapping = {};
