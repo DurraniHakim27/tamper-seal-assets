@@ -931,222 +931,1025 @@ function revealMainTabs() {
     setView("addSeal");
   }
 
-  // ==================== PROCESSOR REPLACEMENT DECISION ====================
-  function getReplacementDecision() {
-    if (!newSealSeg) return "";
-    const selected = newSealSeg.querySelector(".segmented-btn[aria-pressed='true']");
-    return selected ? String(selected.value || "") : "";
-  }
+ // ==================== PROCESSOR PARTIAL SEAL PROCESSING ====================
 
-  function clearReplacementFields() {
-    if (mappingList) {
-      mappingList.querySelectorAll(".mapping-field").forEach(field => {
-        field.value = "";
-      });
+function parseSealProgressClient_(value, selectedSeals) {
+  let progress = {};
+
+  if (value && typeof value === "object") {
+    progress = value;
+  } else {
+    const text = String(value || "").trim();
+
+    if (text) {
+      try {
+        progress = JSON.parse(text);
+      } catch (err) {
+        progress = {};
+      }
     }
-    if (dateInitialsField) dateInitialsField.value = "";
   }
 
-  function resetReplacementDecision() {
-    if (newSealSeg) {
-      newSealSeg.querySelectorAll(".segmented-btn").forEach(btn => {
-        btn.setAttribute("aria-pressed", "false");
-      });
+  const result = {};
+
+  (selectedSeals || []).forEach(sealId => {
+    const key = String(sealId || "").trim();
+    if (!key) return;
+
+    const existing =
+      progress[key] ||
+      progress[key.toUpperCase()] ||
+      {};
+
+    result[key] = {
+      status: String(existing.status || "PENDING")
+        .trim()
+        .toUpperCase(),
+
+      newSealApplied:
+        String(existing.newSealApplied || ""),
+
+      newSealId:
+        String(existing.newSealId || ""),
+
+      removalDate:
+        String(existing.removalDate || ""),
+
+      dateInitials:
+        String(existing.dateInitials || ""),
+
+      remarks:
+        String(existing.remarks || ""),
+
+      actionedBy:
+        String(existing.actionedBy || ""),
+
+      actionedAt:
+        String(existing.actionedAt || "")
+    };
+  });
+
+  return result;
+}
+
+
+function getPendingProcessRows_() {
+  if (!mappingList) return [];
+
+  return Array.from(
+    mappingList.querySelectorAll(
+      ".partial-seal-row[data-status='pending']"
+    )
+  );
+}
+
+
+function setPerSealDecision_(row, decision) {
+  if (!row) return;
+
+  const yesBtn =
+    row.querySelector(".partial-replace-yes");
+
+  const noBtn =
+    row.querySelector(".partial-replace-no");
+
+  const newSealField =
+    row.querySelector(".partial-new-seal");
+
+  const initialsField =
+    row.querySelector(".partial-date-initials");
+
+  if (yesBtn) {
+    yesBtn.setAttribute(
+      "aria-pressed",
+      decision === "Yes" ? "true" : "false"
+    );
+  }
+
+  if (noBtn) {
+    noBtn.setAttribute(
+      "aria-pressed",
+      decision === "No" ? "true" : "false"
+    );
+  }
+
+  const showReplacement =
+    decision === "Yes";
+
+  if (newSealField) {
+    newSealField.classList.toggle(
+      "hidden",
+      !showReplacement
+    );
+
+    newSealField.disabled =
+      !showReplacement;
+
+    if (!showReplacement) {
+      newSealField.value = "";
     }
-    clearReplacementFields();
-    updateReplacementView();
   }
 
-function updateReplacementView() {
-  const decision = getReplacementDecision();
-  const showReplacement = decision === "Yes";
+  if (initialsField) {
+    initialsField.classList.toggle(
+      "hidden",
+      !showReplacement
+    );
 
-  if (mappingSection) {
-    mappingSection.classList.toggle("hidden", !showReplacement);
-  }
+    initialsField.disabled =
+      !showReplacement;
 
-  if (dateInitialsRow) {
-    dateInitialsRow.classList.toggle("hidden", !showReplacement);
-  }
-
-  if (mappingList) {
-    mappingList.querySelectorAll(".mapping-field").forEach(field => {
-      field.disabled = !showReplacement;
-    });
-  }
-
-  if (dateInitialsField) {
-    dateInitialsField.disabled = !showReplacement;
-  }
-
-  if (decision === "No") {
-    clearReplacementFields();
-  }
-
-  if (replacementDecisionHint) {
-    if (!decision) {
-      replacementDecisionHint.textContent =
-        "Select Yes or No before finalizing.";
-    } else if (decision === "Yes") {
-      replacementDecisionHint.textContent =
-        "Enter one replacement seal ID for every removed seal.";
-    } else {
-      replacementDecisionHint.textContent =
-        "No replacement seal will be recorded.";
+    if (!showReplacement) {
+      initialsField.value = "";
     }
   }
 
   updateFinalizeButtonState();
 }
 
-  function collectReplacementMapping() {
-    const mapping = {};
-    if (!mappingList) return mapping;
 
-    mappingList.querySelectorAll(".mapping-field").forEach(field => {
-      const oldSeal = String(field.dataset.old || "").trim();
-      if (oldSeal) mapping[oldSeal] = String(field.value || "").trim();
-    });
-    return mapping;
-  }
+function setPerSealEnabled_(row, enabled) {
+  if (!row) return;
 
-  function processorFormState() {
-    const decision = getReplacementDecision();
-    const mapping = collectReplacementMapping();
-    const basicComplete = !!(
-      removalDate && String(removalDate.value || "").trim() &&
-      processRemarks && String(processRemarks.value || "").trim()
+  const controls =
+    row.querySelector(
+      ".partial-seal-controls"
     );
 
-    if (!basicComplete || !decision) {
-      return { valid: false, decision, mapping };
-    }
-
-    if (decision === "No") {
-      const contradictory = Object.values(mapping).some(value => String(value || "").trim()) ||
-        !!(dateInitialsField && String(dateInitialsField.value || "").trim());
-      return { valid: !contradictory, decision, mapping, contradictory };
-    }
-
-    if (decision === "Yes") {
-      const allMapped = Object.keys(mapping).length > 0 && Object.values(mapping).every(value => String(value || "").trim());
-      const hasDateInitials = !!(dateInitialsField && String(dateInitialsField.value || "").trim());
-      return { valid: allMapped && hasDateInitials, decision, mapping, allMapped, hasDateInitials };
-    }
-
-    return { valid: false, decision, mapping };
+  if (controls) {
+    controls.classList.toggle(
+      "hidden",
+      !enabled
+    );
   }
 
-  function updateFinalizeButtonState() {
-    if (!finalizeBtn) return;
-    if (writeBusy || finalizeBtn.dataset.busy === "true") {
-      finalizeBtn.disabled = true;
-      return;
+  row.classList.toggle(
+    "partial-seal-row--selected",
+    !!enabled
+  );
+
+  if (!enabled) {
+
+    row.querySelectorAll(
+      ".partial-replace-btn"
+    ).forEach(btn => {
+      btn.setAttribute(
+        "aria-pressed",
+        "false"
+      );
+    });
+
+    const newSealField =
+      row.querySelector(
+        ".partial-new-seal"
+      );
+
+    const initialsField =
+      row.querySelector(
+        ".partial-date-initials"
+      );
+
+    if (newSealField) {
+      newSealField.value = "";
+      newSealField.disabled = true;
+      newSealField.classList.add("hidden");
     }
-    finalizeBtn.disabled = !processorFormState().valid;
+
+    if (initialsField) {
+      initialsField.value = "";
+      initialsField.disabled = true;
+      initialsField.classList.add("hidden");
+    }
   }
 
-  function renderProcessSummary(req) {
-    currentProcessRequest = req;
+  updateFinalizeButtonState();
+}
 
-    const requestId = String(req.RequestId || req.requestId || getParam("rid") || "");
-    if (processSubtitle) processSubtitle.textContent = "Request ID: " + requestId;
 
-    if (processStatus) {
-      processStatus.innerHTML = "";
-      const chip = document.createElement("md-assist-chip");
-      chip.className = "status-chip";
-      chip.setAttribute("label", String(req.Status || req.status || "PENDING"));
-      processStatus.appendChild(chip);
+function collectSealActions_() {
+  const actions = [];
+
+  getPendingProcessRows_()
+    .forEach(row => {
+
+      const checkbox =
+        row.querySelector(
+          ".process-now-check"
+        );
+
+      if (
+        !checkbox ||
+        !checkbox.checked
+      ) {
+        return;
+      }
+
+      const oldSeal =
+        String(
+          row.dataset.sealId || ""
+        ).trim();
+
+      const selectedDecision =
+        row.querySelector(
+          ".partial-replace-btn[aria-pressed='true']"
+        );
+
+      const decision =
+        selectedDecision
+          ? String(
+              selectedDecision.dataset.decision ||
+              ""
+            )
+          : "";
+
+      const newSealField =
+        row.querySelector(
+          ".partial-new-seal"
+        );
+
+      const initialsField =
+        row.querySelector(
+          ".partial-date-initials"
+        );
+
+      actions.push({
+        oldSeal,
+
+        newSealApplied:
+          decision,
+
+        newSealId:
+          decision === "Yes" &&
+          newSealField
+            ? String(
+                newSealField.value || ""
+              ).trim()
+            : "",
+
+        dateInitials:
+          decision === "Yes" &&
+          initialsField
+            ? String(
+                initialsField.value || ""
+              ).trim()
+            : ""
+      });
+    });
+
+  return actions;
+}
+
+
+function processorFormState() {
+  const actions =
+    collectSealActions_();
+
+  const removalDateValue =
+    removalDate
+      ? String(
+          removalDate.value || ""
+        ).trim()
+      : "";
+
+  const remarksValue =
+    processRemarks
+      ? String(
+          processRemarks.value || ""
+        ).trim()
+      : "";
+
+  if (!actions.length) {
+    return {
+      valid: false,
+      reason: "NO_SELECTION",
+      actions
+    };
+  }
+
+  if (
+    !removalDateValue ||
+    !remarksValue
+  ) {
+    return {
+      valid: false,
+      reason: "MISSING_BATCH_FIELDS",
+      actions
+    };
+  }
+
+  for (const action of actions) {
+
+    if (!action.newSealApplied) {
+      return {
+        valid: false,
+        reason: "MISSING_DECISION",
+        seal: action.oldSeal,
+        actions
+      };
     }
 
-    if (processSummary) {
-      processSummary.innerHTML = "";
-      const name = String(req.Name || "");
-      const company = String(req.Company || "");
-      const fields = [
-        ["Equipment ID", req.EquipmentId || ""],
-        ["Requester", name + (company ? " (" + company + ")" : "")],
-        ["Phone", req.Phone || ""],
-        ["Reason", req.Reason || ""],
-        ["Requester Email", req.RequesterEmail || ""]
-      ];
+    if (
+      action.newSealApplied === "Yes"
+    ) {
 
-      fields.forEach(([label, value]) => {
-        const item = document.createElement("div");
-        item.className = "kv-item";
-        const key = document.createElement("div");
-        key.className = "kv-label";
-        key.textContent = label;
-        const val = document.createElement("div");
-        val.className = "kv-value";
-        val.textContent = value || "";
+      if (!action.newSealId) {
+        return {
+          valid: false,
+          reason: "MISSING_NEW_SEAL",
+          seal: action.oldSeal,
+          actions
+        };
+      }
+
+      if (!action.dateInitials) {
+        return {
+          valid: false,
+          reason: "MISSING_INITIALS",
+          seal: action.oldSeal,
+          actions
+        };
+      }
+    }
+  }
+
+  const replacementIds =
+    actions
+      .filter(
+        action =>
+          action.newSealApplied === "Yes"
+      )
+      .map(
+        action =>
+          action.newSealId.toUpperCase()
+      );
+
+  if (
+    new Set(replacementIds).size !==
+    replacementIds.length
+  ) {
+    return {
+      valid: false,
+      reason: "DUPLICATE_REPLACEMENT",
+      actions
+    };
+  }
+
+  return {
+    valid: true,
+    reason: "",
+    actions,
+    removalDate: removalDateValue,
+    remarks: remarksValue
+  };
+}
+
+
+function updateFinalizeButtonState() {
+  if (!finalizeBtn) return;
+
+  if (
+    writeBusy ||
+    finalizeBtn.dataset.busy === "true"
+  ) {
+    finalizeBtn.disabled = true;
+    return;
+  }
+
+  finalizeBtn.disabled =
+    !processorFormState().valid;
+}
+
+
+function renderProcessSummary(req) {
+  currentProcessRequest = req;
+
+  const requestId =
+    String(
+      req.RequestId ||
+      req.requestId ||
+      getParam("rid") ||
+      ""
+    );
+
+  if (processSubtitle) {
+    processSubtitle.textContent =
+      "Request ID: " + requestId;
+  }
+
+  const selected =
+    Array.isArray(req.selectedSeals) &&
+    req.selectedSeals.length
+      ? req.selectedSeals
+      : parseList(
+          req.SelectedOldSeals
+        );
+
+  const progress =
+    parseSealProgressClient_(
+      req.SealProgress,
+      selected
+    );
+
+  const completedCount =
+    selected.filter(seal => {
+      const item = progress[seal];
+
+      return (
+        item &&
+        item.status === "COMPLETED"
+      );
+    }).length;
+
+  const remainingCount =
+    selected.length - completedCount;
+
+  const status =
+    String(
+      req.Status ||
+      req.status ||
+      "PENDING"
+    )
+      .trim()
+      .toUpperCase();
+
+  if (processStatus) {
+    processStatus.innerHTML = "";
+
+    const statusChip =
+      document.createElement(
+        "md-assist-chip"
+      );
+
+    statusChip.className =
+      "status-chip";
+
+    statusChip.setAttribute(
+      "label",
+      status || "PENDING"
+    );
+
+    processStatus.appendChild(
+      statusChip
+    );
+
+    const progressChip =
+      document.createElement(
+        "md-assist-chip"
+      );
+
+    progressChip.className =
+      "status-chip";
+
+    progressChip.setAttribute(
+      "label",
+      completedCount +
+        "/" +
+        selected.length +
+        " completed"
+    );
+
+    processStatus.appendChild(
+      progressChip
+    );
+  }
+
+  if (processSummary) {
+    processSummary.innerHTML = "";
+
+    const name =
+      String(req.Name || "");
+
+    const company =
+      String(req.Company || "");
+
+    const fields = [
+      [
+        "Equipment ID",
+        req.EquipmentId || ""
+      ],
+
+      [
+        "Requester",
+        name +
+        (
+          company
+            ? " (" + company + ")"
+            : ""
+        )
+      ],
+
+      [
+        "Phone",
+        req.Phone || ""
+      ],
+
+      [
+        "Reason",
+        req.Reason || ""
+      ],
+
+      [
+        "Requester Email",
+        req.RequesterEmail || ""
+      ],
+
+      [
+        "Remaining",
+        remainingCount +
+          " seal(s)"
+      ]
+    ];
+
+    fields.forEach(
+      ([label, value]) => {
+
+        const item =
+          document.createElement("div");
+
+        item.className =
+          "kv-item";
+
+        const key =
+          document.createElement("div");
+
+        key.className =
+          "kv-label";
+
+        key.textContent =
+          label;
+
+        const val =
+          document.createElement("div");
+
+        val.className =
+          "kv-value";
+
+        val.textContent =
+          value || "";
+
         item.appendChild(key);
         item.appendChild(val);
-        processSummary.appendChild(item);
-      });
-    }
 
-    const selected = Array.isArray(req.selectedSeals) && req.selectedSeals.length
-      ? req.selectedSeals
-      : parseList(req.SelectedOldSeals);
-
-    if (processSeals) {
-      processSeals.innerHTML = "";
-      selected.forEach(seal => {
-        const chip = document.createElement("md-assist-chip");
-        chip.setAttribute("label", seal);
-        processSeals.appendChild(chip);
-      });
-    }
-
-    if (mappingList) {
-      mappingList.innerHTML = "";
-      selected.forEach(seal => {
-        const row = document.createElement("div");
-        row.className = "mapping-row";
-
-        const old = document.createElement("div");
-        old.className = "mapping-old-seal";
-        old.textContent = seal;
-
-        const arrow = document.createElement("span");
-        arrow.className = "material-symbols-outlined mapping-arrow";
-        arrow.setAttribute("aria-hidden", "true");
-        arrow.textContent = "arrow_forward";
-
-const field = document.createElement("input");
-field.type = "text";
-field.className = "mapping-field";
-field.dataset.old = seal;
-field.placeholder = "Enter new seal ID";
-field.autocomplete = "off";
-field.disabled = true;
-        field.addEventListener("input", updateFinalizeButtonState);
-        field.addEventListener("change", updateFinalizeButtonState);
-
-        row.appendChild(old);
-        row.appendChild(arrow);
-        row.appendChild(field);
-        mappingList.appendChild(row);
-      });
-    }
-
-    if (removalDate) removalDate.value = "";
-    if (processRemarks) processRemarks.value = "";
-    resetReplacementDecision();
+        processSummary.appendChild(
+          item
+        );
+      }
+    );
   }
 
-  function showProcessEmpty(message, requestId) {
-    if (processSubtitle) {
-      processSubtitle.textContent = (message || "Request details unavailable.") + (requestId ? " (" + requestId + ")" : "");
-    }
-    if (processStatus) processStatus.innerHTML = "";
-    if (processSummary) processSummary.innerHTML = "";
-    if (processSeals) processSeals.innerHTML = "";
-    if (mappingList) mappingList.innerHTML = "";
+  if (processSeals) {
+    processSeals.innerHTML = "";
+
+    selected.forEach(seal => {
+
+      const item =
+        progress[seal] || {
+          status: "PENDING"
+        };
+
+      const chip =
+        document.createElement(
+          "md-assist-chip"
+        );
+
+      chip.setAttribute(
+        "label",
+        seal +
+        (
+          item.status === "COMPLETED"
+            ? " • Completed"
+            : " • Pending"
+        )
+      );
+
+      processSeals.appendChild(
+        chip
+      );
+    });
   }
 
+  // Hide the old global Yes/No controls.
+  if (newSealSeg) {
+    const block =
+      newSealSeg.closest(
+        ".replacement-decision-block"
+      );
+
+    if (block) {
+      block.style.display = "none";
+    }
+  }
+
+  if (dateInitialsRow) {
+    dateInitialsRow.classList.add(
+      "hidden"
+    );
+  }
+
+  if (replacementDecisionHint) {
+    replacementDecisionHint.textContent =
+      "Tick the seal(s) you are processing now. Unselected seals remain pending.";
+  }
+
+  if (mappingSection) {
+    mappingSection.classList.remove(
+      "hidden"
+    );
+
+    mappingSection.classList.remove(
+      "fade-slide"
+    );
+
+    mappingSection.classList.add(
+      "active"
+    );
+  }
+
+  if (mappingList) {
+    mappingList.innerHTML = "";
+
+    selected.forEach(seal => {
+
+      const item =
+        progress[seal] || {
+          status: "PENDING"
+        };
+
+      const completed =
+        item.status === "COMPLETED";
+
+      const row =
+        document.createElement("div");
+
+      row.className =
+        "partial-seal-row" +
+        (
+          completed
+            ? " partial-seal-row--completed"
+            : ""
+        );
+
+      row.dataset.sealId =
+        seal;
+
+      row.dataset.status =
+        completed
+          ? "completed"
+          : "pending";
+
+      // Already completed seal
+      if (completed) {
+
+        const statusLine =
+          document.createElement("div");
+
+        statusLine.className =
+          "partial-seal-completed";
+
+        const title =
+          document.createElement(
+            "strong"
+          );
+
+        title.textContent =
+          "✓ " + seal;
+
+        const detail =
+          document.createElement(
+            "span"
+          );
+
+        const replacementText =
+          String(
+            item.newSealApplied || ""
+          ) === "Yes" &&
+          item.newSealId
+            ? " → " +
+              item.newSealId
+            : " → No replacement";
+
+        detail.textContent =
+          replacementText +
+          (
+            item.removalDate
+              ? " • " +
+                item.removalDate
+              : ""
+          );
+
+        statusLine.appendChild(
+          title
+        );
+
+        statusLine.appendChild(
+          detail
+        );
+
+        row.appendChild(
+          statusLine
+        );
+
+        mappingList.appendChild(
+          row
+        );
+
+        return;
+      }
+
+      // Pending seal
+      const top =
+        document.createElement("div");
+
+      top.className =
+        "partial-seal-top";
+
+      const checkLabel =
+        document.createElement(
+          "label"
+        );
+
+      checkLabel.className =
+        "partial-process-check-label";
+
+      const checkbox =
+        document.createElement(
+          "input"
+        );
+
+      checkbox.type =
+        "checkbox";
+
+      checkbox.className =
+        "process-now-check";
+
+      const sealText =
+        document.createElement(
+          "strong"
+        );
+
+      sealText.textContent =
+        seal;
+
+      const pendingText =
+        document.createElement(
+          "span"
+        );
+
+      pendingText.className =
+        "partial-pending-label";
+
+      pendingText.textContent =
+        "Pending";
+
+      checkLabel.appendChild(
+        checkbox
+      );
+
+      checkLabel.appendChild(
+        sealText
+      );
+
+      top.appendChild(
+        checkLabel
+      );
+
+      top.appendChild(
+        pendingText
+      );
+
+      const controls =
+        document.createElement(
+          "div"
+        );
+
+      controls.className =
+        "partial-seal-controls hidden";
+
+      const question =
+        document.createElement(
+          "div"
+        );
+
+      question.className =
+        "supporting";
+
+      question.textContent =
+        "New tamper seal applied?";
+
+      const segmented =
+        document.createElement(
+          "div"
+        );
+
+      segmented.className =
+        "segmented partial-seal-segmented";
+
+      const yesBtn =
+        document.createElement(
+          "button"
+        );
+
+      yesBtn.type =
+        "button";
+
+      yesBtn.className =
+        "segmented-btn partial-replace-btn partial-replace-yes";
+
+      yesBtn.dataset.decision =
+        "Yes";
+
+      yesBtn.setAttribute(
+        "aria-pressed",
+        "false"
+      );
+
+      yesBtn.textContent =
+        "Yes";
+
+      const noBtn =
+        document.createElement(
+          "button"
+        );
+
+      noBtn.type =
+        "button";
+
+      noBtn.className =
+        "segmented-btn partial-replace-btn partial-replace-no";
+
+      noBtn.dataset.decision =
+        "No";
+
+      noBtn.setAttribute(
+        "aria-pressed",
+        "false"
+      );
+
+      noBtn.textContent =
+        "No";
+
+      segmented.appendChild(
+        yesBtn
+      );
+
+      segmented.appendChild(
+        noBtn
+      );
+
+      const newSealField =
+        document.createElement(
+          "input"
+        );
+
+      newSealField.type =
+        "text";
+
+      newSealField.className =
+        "mapping-field partial-new-seal hidden";
+
+      newSealField.placeholder =
+        "Enter new seal ID";
+
+      newSealField.autocomplete =
+        "off";
+
+      newSealField.disabled =
+        true;
+
+      const initialsField =
+        document.createElement(
+          "input"
+        );
+
+      initialsField.type =
+        "text";
+
+      initialsField.className =
+        "mapping-field partial-date-initials hidden";
+
+      initialsField.placeholder =
+        "Date / Initials";
+
+      initialsField.autocomplete =
+        "off";
+
+      initialsField.disabled =
+        true;
+
+      controls.appendChild(
+        question
+      );
+
+      controls.appendChild(
+        segmented
+      );
+
+      controls.appendChild(
+        newSealField
+      );
+
+      controls.appendChild(
+        initialsField
+      );
+
+      checkbox.addEventListener(
+        "change",
+        () => {
+          setPerSealEnabled_(
+            row,
+            checkbox.checked
+          );
+        }
+      );
+
+      yesBtn.addEventListener(
+        "click",
+        () => {
+          setPerSealDecision_(
+            row,
+            "Yes"
+          );
+        }
+      );
+
+      noBtn.addEventListener(
+        "click",
+        () => {
+          setPerSealDecision_(
+            row,
+            "No"
+          );
+        }
+      );
+
+      newSealField.addEventListener(
+        "input",
+        updateFinalizeButtonState
+      );
+
+      initialsField.addEventListener(
+        "input",
+        updateFinalizeButtonState
+      );
+
+      row.appendChild(top);
+      row.appendChild(controls);
+
+      mappingList.appendChild(
+        row
+      );
+    });
+  }
+
+  if (removalDate) {
+    removalDate.value = "";
+  }
+
+  if (processRemarks) {
+    processRemarks.value = "";
+  }
+
+  updateFinalizeButtonState();
+}
+
+
+function showProcessEmpty(
+  message,
+  requestId
+) {
+
+  if (processSubtitle) {
+    processSubtitle.textContent =
+      (
+        message ||
+        "Request details unavailable."
+      ) +
+      (
+        requestId
+          ? " (" +
+            requestId +
+            ")"
+          : ""
+      );
+  }
+
+  if (processStatus) {
+    processStatus.innerHTML = "";
+  }
+
+  if (processSummary) {
+    processSummary.innerHTML = "";
+  }
+
+  if (processSeals) {
+    processSeals.innerHTML = "";
+  }
+
+  if (mappingList) {
+    mappingList.innerHTML = "";
+  }
+}
+  
   // ==================== LOAD EQUIPMENT ====================
   async function loadEquipment(options) {
     const eq = String((options && options.equipmentId) || getParam("eq") || "").trim();
@@ -1340,88 +2143,326 @@ field.disabled = true;
   }
 
   // ==================== PROCESS LOAD / ACTIONS ====================
-  async function loadRequest() {
-    const requestId = String(getParam("rid") || "").trim();
-    if (!requestId) {
-      showProcessEmpty("No request ID in URL.", "");
+async function loadRequest() {
+  const requestId =
+    String(
+      getParam("rid") || ""
+    ).trim();
+
+  if (!requestId) {
+    showProcessEmpty(
+      "No request ID in URL.",
+      ""
+    );
+
+    return;
+  }
+
+  setView("process");
+
+  if (processSubtitle) {
+    processSubtitle.textContent =
+      "Loading request " +
+      requestId +
+      "…";
+  }
+
+  try {
+
+    const data =
+      await getProcessPageDataServer(
+        requestId
+      );
+
+    const req =
+      data && data.request
+        ? data.request
+        : data;
+
+    if (
+      !req ||
+      req._error
+    ) {
+
+      showProcessEmpty(
+        (
+          req &&
+          req._error
+        ) ||
+        "Request details unavailable.",
+        requestId
+      );
+
       return;
     }
+
+    const status =
+      String(
+        req.Status ||
+        req.status ||
+        ""
+      )
+        .trim()
+        .toUpperCase();
+
+    // PARTIAL is still an open request.
+    if (
+      status &&
+      status !== "PENDING" &&
+      status !== "PARTIAL"
+    ) {
+
+      if (
+        alreadyProcessedSubtitle
+      ) {
+
+        alreadyProcessedSubtitle.textContent =
+          "Request ID: " +
+          (
+            req.RequestId ||
+            requestId
+          ) +
+          " • Status: " +
+          status;
+      }
+
+      setView(
+        "alreadyProcessed"
+      );
+
+      return;
+    }
+
+    renderProcessSummary(req);
 
     setView("process");
-    if (processSubtitle) processSubtitle.textContent = "Loading request " + requestId + "…";
 
-    try {
-      const data = await getProcessPageDataServer(requestId);
-      const req = data && data.request ? data.request : data;
+  } catch (err) {
 
-      if (!req || req._error) {
-        showProcessEmpty((req && req._error) || "Request details unavailable.", requestId);
-        return;
-      }
+    showFriendlyError(err);
 
-      const status = String(req.Status || req.status || "").trim().toUpperCase();
-      if (status && status !== "PENDING") {
-        if (alreadyProcessedSubtitle) {
-          alreadyProcessedSubtitle.textContent = "Request ID: " + (req.RequestId || requestId) + " • Status: " + status;
-        }
-        setView("alreadyProcessed");
-        return;
-      }
+    showProcessEmpty(
+      errorMessage(err),
+      requestId
+    );
+  }
+}
 
-      renderProcessSummary(req);
-      setView("process");
-    } catch (err) {
-      showFriendlyError(err);
-      showProcessEmpty(errorMessage(err), requestId);
+
+async function finalizeAction() {
+  if (!finalizeBtn) return;
+
+  const state =
+    processorFormState();
+
+  if (!state.valid) {
+
+    if (
+      state.reason ===
+      "NO_SELECTION"
+    ) {
+
+      showToast(
+        "Select at least one pending seal to process now."
+      );
+
+    } else if (
+      state.reason ===
+      "MISSING_BATCH_FIELDS"
+    ) {
+
+      showToast(
+        "Date of removal and remarks are required."
+      );
+
+    } else if (
+      state.reason ===
+      "MISSING_DECISION"
+    ) {
+
+      showToast(
+        "Select Yes or No for " +
+        state.seal +
+        "."
+      );
+
+    } else if (
+      state.reason ===
+      "MISSING_NEW_SEAL"
+    ) {
+
+      showToast(
+        "Enter the replacement seal ID for " +
+        state.seal +
+        "."
+      );
+
+    } else if (
+      state.reason ===
+      "MISSING_INITIALS"
+    ) {
+
+      showToast(
+        "Enter Date / Initials for the replacement of " +
+        state.seal +
+        "."
+      );
+
+    } else if (
+      state.reason ===
+      "DUPLICATE_REPLACEMENT"
+    ) {
+
+      showToast(
+        "The same replacement seal ID cannot be used more than once."
+      );
+
+    } else {
+
+      showToast(
+        "Complete the selected seal processing details."
+      );
     }
+
+    return;
   }
 
-  async function finalizeAction() {
-    if (!finalizeBtn) return;
+  if (
+    !beginWrite(
+      finalizeBtn,
+      "Processing…"
+    )
+  ) {
+    return;
+  }
 
-    const state = processorFormState();
-    if (!state.valid) {
-      if (!state.decision) {
-        showToast("Select Yes or No for 'New tamper seal applied?'.");
-      } else if (!removalDate || !String(removalDate.value || "").trim() || !processRemarks || !String(processRemarks.value || "").trim()) {
-        showToast("Date of removal and remarks are required.");
-      } else if (state.decision === "Yes" && !state.hasDateInitials) {
-        showToast("Date / Initials are required when a new seal is applied.");
-      } else if (state.decision === "Yes" && !state.allMapped) {
-        showToast("Provide one replacement seal ID for every removed seal.");
-      } else if (state.contradictory) {
-        showToast("Replacement details cannot be entered when 'No' is selected.");
-      } else {
-        showToast("Complete the required processor fields.");
-      }
+  if (cancelBtn) {
+    cancelBtn.disabled = true;
+  }
+
+  try {
+
+    const result =
+      await finalizeRequestServer({
+        requestId:
+          String(
+            getParam("rid") || ""
+          ).trim(),
+
+        removalDate:
+          state.removalDate,
+
+        remarks:
+          state.remarks,
+
+        sealActions:
+          state.actions
+      });
+
+    if (
+      result &&
+      result.alreadyFinalized
+    ) {
+
+      showToast(
+        "This request was already finalized."
+      );
+
+      setView(
+        "finalizeSuccess"
+      );
+
       return;
     }
 
-    if (!beginWrite(finalizeBtn, "Finalizing…")) return;
-    if (cancelBtn) cancelBtn.disabled = true;
+    if (
+      result &&
+      result.alreadyProcessed
+    ) {
 
-    try {
-      const result = await finalizeRequestServer({
-        requestId: String(getParam("rid") || "").trim(),
-        newSealApplied: state.decision,
-        removalDate: String(removalDate.value || "").trim(),
-        dateInitials: state.decision === "Yes" ? String(dateInitialsField.value || "").trim() : "",
-        remarks: String(processRemarks.value || "").trim(),
-        mapping: state.decision === "Yes" ? state.mapping : {}
-      });
+      showToast(
+        "Those seal(s) were already processed. Reloading current status."
+      );
 
-      if (result && result.alreadyFinalized) {
-        showToast("This request was already finalized. No duplicate log was created.");
-      }
+      await loadRequest();
 
-      setView("finalizeSuccess");
-    } catch (err) {
-      showFriendlyError(err);
-    } finally {
-      endWrite(finalizeBtn);
-      if (cancelBtn) cancelBtn.disabled = false;
+      return;
+    }
+
+    const status =
+      String(
+        result &&
+        result.status ||
+        ""
+      ).toUpperCase();
+
+    const counts =
+      result &&
+      result.progressCounts
+        ? result.progressCounts
+        : null;
+
+    if (
+      status === "PARTIAL"
+    ) {
+
+      const progressText =
+        counts
+          ? counts.completed +
+            "/" +
+            counts.total +
+            " completed. " +
+            counts.remaining +
+            " remaining."
+          : "Request partially processed.";
+
+      showToast(
+        progressText
+      );
+
+      // Stay on same Request ID.
+      // Remaining seals can be processed later.
+      await loadRequest();
+
+      return;
+    }
+
+    if (
+      status === "FINALIZED"
+    ) {
+
+      setView(
+        "finalizeSuccess"
+      );
+
+      return;
+    }
+
+    showToast(
+      "Processing saved. Current status: " +
+      (
+        status ||
+        "UPDATED"
+      )
+    );
+
+    await loadRequest();
+
+  } catch (err) {
+
+    showFriendlyError(err);
+
+  } finally {
+
+    endWrite(
+      finalizeBtn
+    );
+
+    if (cancelBtn) {
+      cancelBtn.disabled = false;
     }
   }
+}
 
   async function cancelAction() {
     if (!cancelBtn) return;
