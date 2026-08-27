@@ -1116,12 +1116,13 @@ function updateReplacementView() {
         arrow.setAttribute("aria-hidden", "true");
         arrow.textContent = "arrow_forward";
 
-        const field = document.createElement("md-outlined-text-field");
-        field.className = "mapping-field";
-        field.dataset.old = seal;
-        field.setAttribute("label", "New seal for " + seal);
-        field.setAttribute("supporting-text", "Required when Yes is selected");
-        field.disabled = true;
+const field = document.createElement("input");
+field.type = "text";
+field.className = "mapping-field";
+field.dataset.old = seal;
+field.placeholder = "Enter new seal ID";
+field.autocomplete = "off";
+field.disabled = true;
         field.addEventListener("input", updateFinalizeButtonState);
         field.addEventListener("change", updateFinalizeButtonState);
 
