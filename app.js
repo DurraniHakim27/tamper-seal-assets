@@ -2576,7 +2576,20 @@ const haystack = [
       showToast("Could not open request.");
       return;
     }
-    const url = base + "?page=process&rid=" + encodeURIComponent(requestId);
+    const equipmentId =
+  String(
+    row && row.equipmentId || ""
+  ).trim();
+
+const url =
+  base +
+  "?page=process&rid=" +
+  encodeURIComponent(requestId) +
+  (
+    equipmentId
+      ? "&eq=" + encodeURIComponent(equipmentId)
+      : ""
+  );
     const popup = window.open(url, "_blank", "noopener,noreferrer");
     if (!popup) window.top.location.href = url;
   }
@@ -2774,19 +2787,27 @@ const haystack = [
     listenersBound = true;
 
     // Top-level tabs are real navigation in V2.
-    tabRequest?.addEventListener("click", () => {
-      if (!currentContext.capabilities.canRequest) return;
-      const eq = getParam("eq");
-      if (eq && currentContext.capabilities.canInitialSeal && currentEquipmentData) {
-        currentEquipmentMode = "request";
-        setUrlParam("mode", "break");
-        enterRequestMode(currentEquipmentData);
-      } else if (eq) {
-        loadEquipment();
-      } else {
-        navigateTo("request", {});
-      }
-    });
+tabRequest?.addEventListener("click", () => {
+  if (!currentContext.capabilities.canRequest) return;
+
+  const eq =
+    String(
+      getParam("eq") ||
+      (currentProcessRequest && currentProcessRequest.EquipmentId) ||
+      (currentEquipmentData && currentEquipmentData.equipmentId) ||
+      ""
+    ).trim();
+
+  if (!eq) {
+    navigateTo("request", {});
+    return;
+  }
+
+  navigateTo("request", {
+    eq: eq,
+    mode: "break"
+  });
+});
 
     tabProcess?.addEventListener("click", () => {
       if (!currentContext.capabilities.canProcess) return;
